@@ -54,6 +54,10 @@ FROM docker.io/library/debian:bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# The first group is what the cross-compile itself needs. The second is what the
+# release pipeline shells out to: rsync in the $(CACHE)/.setup target, 7z (from
+# p7zip-full) when packaging in `dist`, and wget/unzip in .github/get_themes.sh.
+# Without them `make apps` fails with "rsync: No such file or directory".
 RUN apt-get -y update && apt-get -y install --no-install-recommends \
         build-essential \
         ca-certificates \
@@ -62,6 +66,9 @@ RUN apt-get -y update && apt-get -y install --no-install-recommends \
         wget \
         xz-utils \
         zip \
+        p7zip-full \
+        rsync \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TOOLCHAIN_VERSION=v0.0.3

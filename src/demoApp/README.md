@@ -13,12 +13,14 @@ so starting from this directory gets you a working app without reverse-engineeri
 make demo-app
 ```
 
-Output lands in `build/App/DemoApp/`. That target is deliberately **not** part of
-`make all` / `apps` — this is a template, not something end users should find in
-their Package Manager. See "Ship it as a real app" below.
+Output lands in `build/App/DemoApp/`. To try it on hardware, copy that folder to
+`/mnt/SDCARD/App/DemoApp/` on the SD card; it shows up in the app list on the next
+reload.
 
-To try it on hardware, copy `build/App/DemoApp/` to `/mnt/SDCARD/App/DemoApp/` on
-the SD card. It will show up in the app list on the next reload.
+It is *also* built and preinstalled by the `apps` target, so it currently ships in
+release builds. That is useful while developing against it, but a template app
+probably should not reach end users — **before cutting a release, drop the
+`demoApp` lines from `apps:` in the root `Makefile`.**
 
 Everything is cross-compiled inside the toolchain container:
 

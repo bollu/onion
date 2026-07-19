@@ -11,13 +11,21 @@ unproven.
 
 ## Build
 
+This **is** the shipped Music Player: it replaced the vendored GMU package, and
+is built by the `apps` target and preinstalled, so a normal `make all` includes it.
+
+For a quick iteration loop that skips the rest of the release build:
+
 ```sh
 make with-toolchain CMD=music-player
 ```
 
 Output in `build/App/MusicPlayer/`. Copy that folder to `/mnt/SDCARD/App/MusicPlayer/`
-to try it. It is intentionally not part of `make all` yet — the shipped Music
-Player package is still GMU.
+to try it without reflashing.
+
+The sample tracks that used to live in the GMU package moved to
+`static/packages/App/Music Player/Media/Music/`, and land in `/mnt/SDCARD/Media/Music`
+— which is where this scans.
 
 ## Why this is worth doing
 
@@ -125,9 +133,8 @@ the conventional behaviour.
 - **`Mix_OpenAudio` is called by `SDL_InitDefault()`** at 48000 Hz stereo. If a
   track's sample rate differs, SDL_mixer resamples; quality has not been assessed.
 
-## To ship it
+## Reverting to GMU
 
-Replace the GMU package contents with this binary + `config.json` + `launch.sh`,
-delete the vendored `lib/`, `decoders/`, `frontends/` and `themes/` trees, and move
-the build line from the `music-player` target into `apps:` so it lands in
-`$(PACKAGES_APP_DEST)`. Keep `Media/Music/` — the sample tracks live there.
+The GMU package was deleted in the commit that switched this on, so `git revert`
+of that commit restores it (the binaries are still in history). Then drop the
+`musicPlayer` line from the `apps:` target and the matching preinstall line.

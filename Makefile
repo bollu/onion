@@ -214,6 +214,8 @@ apps: $(CACHE)/.setup
 	@cd $(SRC_DIR)/playActivityUI && BUILD_DIR="$(PACKAGES_APP_DEST)/Activity Tracker/App/PlayActivity" make
 	@find $(SRC_DIR)/playActivityUI -depth -type d -name res -exec cp -r {}/. "$(PACKAGES_APP_DEST)/Activity Tracker/App/PlayActivity/res/" \;
 	@find $(SRC_DIR)/packageManager -depth -type d -name res -exec cp -r {}/. $(BUILD_DIR)/App/PackageManager/res/ \;
+	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(PACKAGES_APP_DEST)/Music Player/App/MusicPlayer" make
+	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(PACKAGES_APP_DEST)/Demo App/App/DemoApp" make
 	@cd $(SRC_DIR)/clock && BUILD_DIR="$(BIN_DIR)" make
 	@cd $(SRC_DIR)/randomGamePicker && BUILD_DIR="$(BIN_DIR)" make
 # Preinstalled apps
@@ -222,9 +224,11 @@ apps: $(CACHE)/.setup
 	@cp -a "$(PACKAGES_APP_DEST)/RetroArch (Shortcut)/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Tweaks/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/ThemeSwitcher/." $(BUILD_DIR)/
+	@cp -a "$(PACKAGES_APP_DEST)/Music Player/." $(BUILD_DIR)/
+	@cp -a "$(PACKAGES_APP_DEST)/Demo App/." $(BUILD_DIR)/
 
-# Native music player. Not yet part of `apps` -- the shipped Music Player package
-# is still the vendored GMU build. See src/musicPlayer/README.md.
+# Quick iteration target for the music player: builds just this app into build/,
+# skipping the rest of the release pipeline. It is also built by `apps`.
 music-player:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p $(BUILD_DIR)/App/MusicPlayer
@@ -233,8 +237,10 @@ music-player:
 	@chmod a+x $(BUILD_DIR)/App/MusicPlayer/launch.sh
 	@$(ECHO) $(PRINT_DONE)
 
-# Example app used as a starting point for new apps. Deliberately not part of
-# `all`/`apps`, so it doesn't ship in releases. See src/demoApp/README.md.
+# Quick iteration target for the example app: builds just this app into build/,
+# skipping the rest of the release pipeline. It is also built by `apps`.
+# NOTE: demoApp is a template, not an end-user app -- drop it from `apps` before
+# cutting a release. See src/demoApp/README.md.
 demo-app:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p $(BUILD_DIR)/App/DemoApp
