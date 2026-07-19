@@ -1,6 +1,0 @@
-{
-"label":"Demo App",
-"icon":"../../Icons/Default/app/manual.png",
-"launch":"launch.sh",
-"description":"Hello world example app"
-}

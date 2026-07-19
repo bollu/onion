@@ -1,6 +1,0 @@
-{
-"label":"Music Player",
-"icon":"../../Icons/Default/app/music.png",
-"launch":"launch.sh",
-"description":"Play MP3s from Media/Music"
-}

@@ -34,8 +34,14 @@ make with-toolchain CMD=demo-app
 | --- | --- |
 | `demoApp.c` | The app: init, event loop, render, teardown. |
 | `Makefile` | 8 lines. The shared build logic lives in `src/common/*.mk`. |
-| `config.json` | Manifest MainUI reads: label, icon, launch script, description. |
-| `launch.sh` | What MainUI actually executes. |
+
+The two files MainUI reads live with the package, not here, so there is only ever
+one copy of them:
+
+| File | Purpose |
+| --- | --- |
+| `static/packages/App/Demo App/App/DemoApp/config.json` | Manifest: label, icon, launch script, description. |
+| `static/packages/App/Demo App/App/DemoApp/launch.sh` | What MainUI actually executes. |
 
 ## How a new app is put together
 
@@ -99,9 +105,10 @@ translatable.
 Two steps.
 
 1. Add a package folder under `static/packages/App/<Your App>/App/<YourApp>/`
-   containing `config.json` and `launch.sh` (copy the ones here). The Makefile
-   rsyncs `static/packages/` into the Package Manager catalog, so anything there
-   becomes installable.
+   containing `config.json` and `launch.sh` (copy Demo App's). The Makefile rsyncs
+   `static/packages/` into the Package Manager catalog, so anything there becomes
+   installable. Keep these two files only in the package — the quick-iteration
+   targets copy them from there, so there is nothing to keep in sync.
 
 2. Build the binary into that folder from the `apps:` target in the root
    `Makefile`, next to the existing entries:

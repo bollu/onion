@@ -258,7 +258,7 @@ pc-link:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p $(BUILD_DIR)/App/PCLink
 	@cd $(SRC_DIR)/pcLink && BUILD_DIR="$(BUILD_DIR)/App/PCLink" make
-	@cp $(SRC_DIR)/pcLink/config.json $(SRC_DIR)/pcLink/launch.sh $(BUILD_DIR)/App/PCLink/
+	@cp "$(STATIC_PACKAGES)/App/PCLink/App/PCLink/config.json" "$(STATIC_PACKAGES)/App/PCLink/App/PCLink/launch.sh" $(BUILD_DIR)/App/PCLink/
 	@chmod a+x $(BUILD_DIR)/App/PCLink/launch.sh
 	@$(ECHO) $(PRINT_DONE)
 
@@ -268,7 +268,7 @@ music-player:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p $(BUILD_DIR)/App/MusicPlayer
 	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(BUILD_DIR)/App/MusicPlayer" make
-	@cp $(SRC_DIR)/musicPlayer/config.json $(SRC_DIR)/musicPlayer/launch.sh $(BUILD_DIR)/App/MusicPlayer/
+	@cp "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/config.json" "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/launch.sh" $(BUILD_DIR)/App/MusicPlayer/
 	@chmod a+x $(BUILD_DIR)/App/MusicPlayer/launch.sh
 	@$(ECHO) $(PRINT_DONE)
 
@@ -300,7 +300,7 @@ demo-app:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p $(BUILD_DIR)/App/DemoApp
 	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(BUILD_DIR)/App/DemoApp" make
-	@cp $(SRC_DIR)/demoApp/config.json $(SRC_DIR)/demoApp/launch.sh $(BUILD_DIR)/App/DemoApp/
+	@cp "$(STATIC_PACKAGES)/App/Demo App/App/DemoApp/config.json" "$(STATIC_PACKAGES)/App/Demo App/App/DemoApp/launch.sh" $(BUILD_DIR)/App/DemoApp/
 	@chmod a+x $(BUILD_DIR)/App/DemoApp/launch.sh
 	@$(ECHO) $(PRINT_DONE)
 
