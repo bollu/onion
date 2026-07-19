@@ -1,0 +1,6 @@
+{
+"label":"PCLink",
+"icon":"../../Icons/Default/app/filebrowser.png",
+"launch":"launch.sh",
+"description":"Share the SD card over Wi-Fi"
+}
