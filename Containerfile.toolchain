@@ -1,0 +1,97 @@
+# Miyoo Mini cross-compilation toolchain, built natively for the host architecture.
+#
+# WHY THIS EXISTS
+# ---------------
+# The upstream image referenced by the Makefile (aemiii91/miyoomini-toolchain) is
+# published for linux/amd64 only. On an arm64 host (Apple silicon) that requires
+# qemu emulation, which is slow and — under podman on macOS — currently does not
+# work at all: binfmt registrations made in the podman VM do not reach rootless
+# containers, so any amd64 container fails with "Exec format error".
+#
+# Building the toolchain natively sidesteps emulation entirely. The compiler is a
+# cross-compiler targeting armv7 (arm-linux-gnueabihf) either way, so the host
+# architecture only affects build speed, never the produced binaries. Output is
+# byte-for-byte equivalent in flags/ABI to the amd64 image:
+#   -marm -mtune=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7ve
+#
+# The RUN step below picks shauninman's aarch64 toolchain release on an arm64 host
+# and the x86_64 one otherwise, so this file works on both.
+#
+# USE
+#   Nothing to configure. The Makefile detects the host architecture and, on a
+#   non-amd64 host, defaults TOOLCHAIN to localhost/miyoomini-toolchain:latest and
+#   builds this file automatically if that image is missing. So:
+#     make toolchain                 # interactive shell in the toolchain
+#     make with-toolchain CMD=core   # run a make target inside it
+#     make toolchain-image           # force a rebuild/re-pull
+#   On an amd64 host the Makefile pulls the upstream image instead and this file
+#   is never used. To build it by hand:
+#     podman build -f Containerfile.toolchain -t localhost/miyoomini-toolchain:latest .
+#
+# HOW THIS FILE WAS DERIVED
+#   It was NOT copied from upstream. An arm64 toolchain image already existed on
+#   the machine with no source recipe committed anywhere, so the recipe was
+#   recovered from the image's own layer metadata:
+#
+#     podman history --no-trunc --format '{{.CreatedBy}}' localhost/miyoomini-toolchain:latest
+#
+#   Every layer in a container image records the command that produced it, so that
+#   dump yields the original instructions in order: the debian bookworm arm64 base,
+#   the apt install, the ARG/RUN pair that fetches the toolchain tarball, the four
+#   ENV settings, and the WORKDIR/CMD. Those were transcribed verbatim below; only
+#   comments and the ARG default were added. Both release URLs the RUN step can
+#   select were then checked to confirm they still resolve (HTTP 200).
+#
+#   Verified equivalent to the pre-existing image by building this file to a scratch
+#   tag and comparing: same cross-gcc version (8.3.0), and src/cpuclock plus
+#   src/tweaks (the app that links -lSDL_mixer) both compile to ELF32 ARM binaries
+#   with identical flags.
+#
+#   Caveat: this reproduces the image's *instructions*, not a bit-identical result.
+#   The debian base tag and the apt package set both float over time.
+
+FROM docker.io/library/debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# The first group is what the cross-compile itself needs. The second is what the
+# release pipeline shells out to: rsync in the $(CACHE)/.setup target, 7z (from
+# p7zip-full) when packaging in `dist`, and wget/unzip in .github/get_themes.sh.
+# Without them `make apps` fails with "rsync: No such file or directory".
+RUN apt-get -y update && apt-get -y install --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        make \
+        wget \
+        xz-utils \
+        zip \
+        p7zip-full \
+        rsync \
+        unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG TOOLCHAIN_VERSION=v0.0.3
+
+RUN set -eu; \
+    arch="$(uname -m)"; \
+    if [ "$arch" = "aarch64" ]; then \
+        repo=miyoomini-toolchain-buildroot-aarch64; \
+    else \
+        repo=miyoomini-toolchain-buildroot; \
+    fi; \
+    echo "fetching $repo $TOOLCHAIN_VERSION"; \
+    wget -q -O /tmp/toolchain.tar.xz \
+        "https://github.com/shauninman/$repo/releases/download/$TOOLCHAIN_VERSION/miyoomini-toolchain.tar.xz"; \
+    tar xf /tmp/toolchain.tar.xz -C /opt; \
+    rm -f /tmp/toolchain.tar.xz
+
+ENV PATH="/opt/miyoomini-toolchain/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/miyoomini-toolchain/usr/arm-linux-gnueabihf/sysroot/bin"
+ENV CROSS_COMPILE=/opt/miyoomini-toolchain/usr/bin/arm-linux-gnueabihf-
+ENV PREFIX=/opt/miyoomini-toolchain/usr/arm-linux-gnueabihf/sysroot/usr
+ENV UNION_PLATFORM=miyoomini
+
+RUN mkdir -p /root/workspace
+WORKDIR /root/workspace
+
+CMD ["/bin/bash"]

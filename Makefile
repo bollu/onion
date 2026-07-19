@@ -48,13 +48,64 @@ ifeq (,$(GTEST_INCLUDE_DIR))
 GTEST_INCLUDE_DIR = /usr/include/
 endif
 
-TOOLCHAIN := aemiii91/miyoomini-toolchain:latest
+# Optional, uncommitted per-machine overrides (TOOLCHAIN, DOCKER, DOCKER_PLATFORM, ...).
+# Included before the defaults below, so anything set here wins.
+-include local.mk
+
+# Container runtime used for the toolchain targets. Prefers docker, falls back
+# to podman when docker isn't installed. Override with `make DOCKER=... <target>`.
+ifeq (,$(DOCKER))
+ifdef OS
+DOCKER := docker
+else
+DOCKER := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+endif
+endif
+
+# Host architecture, normalised to the names used by container platform strings.
+# Windows (where OS is set) is only supported on x86_64.
+ifdef OS
+HOST_ARCH := amd64
+else
+UNAME_M := $(shell uname -m)
+ifneq (,$(filter arm64 aarch64,$(UNAME_M)))
+HOST_ARCH := arm64
+else
+HOST_ARCH := amd64
+endif
+endif
+
+DOCKER_PLATFORM ?= linux/$(HOST_ARCH)
+
+# The upstream toolchain image is published for linux/amd64 only. On an amd64 host
+# we just pull it. On any other host (e.g. Apple silicon) running it would require
+# qemu emulation, which is slow and, under podman on macOS, does not work at all --
+# binfmt registrations made in the podman VM do not reach rootless containers, so
+# every amd64 container fails with "Exec format error". Building the toolchain
+# natively from Containerfile.toolchain avoids emulation entirely; the compiler is
+# a cross-compiler targeting armv7 either way, so the produced binaries are
+# unaffected by the host architecture.
+ifeq ($(HOST_ARCH),amd64)
+TOOLCHAIN ?= aemiii91/miyoomini-toolchain:latest
+TOOLCHAIN_ACQUIRE = $(DOCKER) pull --platform $(DOCKER_PLATFORM) $(TOOLCHAIN)
+else
+TOOLCHAIN ?= localhost/miyoomini-toolchain:latest
+TOOLCHAIN_ACQUIRE = $(DOCKER) build -f $(ROOT_DIR)/Containerfile.toolchain --platform $(DOCKER_PLATFORM) -t $(TOOLCHAIN) $(ROOT_DIR)
+endif
+
+# Acquire the image only when it isn't already present, so a locally built
+# toolchain survives and no needless pull happens on every fresh checkout.
+ifdef OS
+DOCKER_ENSURE_IMAGE = $(DOCKER) image inspect $(TOOLCHAIN) >NUL 2>&1 || $(TOOLCHAIN_ACQUIRE)
+else
+DOCKER_ENSURE_IMAGE = $(DOCKER) image inspect $(TOOLCHAIN) >/dev/null 2>&1 || $(TOOLCHAIN_ACQUIRE)
+endif
 
 include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external release clean deepclean git-clean with-toolchain patch lib test
+.PHONY: all version core apps external demo-app music-player release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
 
 all: dist
 
@@ -163,6 +214,8 @@ apps: $(CACHE)/.setup
 	@cd $(SRC_DIR)/playActivityUI && BUILD_DIR="$(PACKAGES_APP_DEST)/Activity Tracker/App/PlayActivity" make
 	@find $(SRC_DIR)/playActivityUI -depth -type d -name res -exec cp -r {}/. "$(PACKAGES_APP_DEST)/Activity Tracker/App/PlayActivity/res/" \;
 	@find $(SRC_DIR)/packageManager -depth -type d -name res -exec cp -r {}/. $(BUILD_DIR)/App/PackageManager/res/ \;
+	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(PACKAGES_APP_DEST)/Music Player/App/MusicPlayer" make
+	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(PACKAGES_APP_DEST)/Demo App/App/DemoApp" make
 	@cd $(SRC_DIR)/clock && BUILD_DIR="$(BIN_DIR)" make
 	@cd $(SRC_DIR)/randomGamePicker && BUILD_DIR="$(BIN_DIR)" make
 # Preinstalled apps
@@ -171,6 +224,30 @@ apps: $(CACHE)/.setup
 	@cp -a "$(PACKAGES_APP_DEST)/RetroArch (Shortcut)/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Tweaks/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/ThemeSwitcher/." $(BUILD_DIR)/
+	@cp -a "$(PACKAGES_APP_DEST)/Music Player/." $(BUILD_DIR)/
+	@cp -a "$(PACKAGES_APP_DEST)/Demo App/." $(BUILD_DIR)/
+
+# Quick iteration target for the music player: builds just this app into build/,
+# skipping the rest of the release pipeline. It is also built by `apps`.
+music-player:
+	@$(ECHO) $(PRINT_RECIPE)
+	@mkdir -p $(BUILD_DIR)/App/MusicPlayer
+	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(BUILD_DIR)/App/MusicPlayer" make
+	@cp $(SRC_DIR)/musicPlayer/config.json $(SRC_DIR)/musicPlayer/launch.sh $(BUILD_DIR)/App/MusicPlayer/
+	@chmod a+x $(BUILD_DIR)/App/MusicPlayer/launch.sh
+	@$(ECHO) $(PRINT_DONE)
+
+# Quick iteration target for the example app: builds just this app into build/,
+# skipping the rest of the release pipeline. It is also built by `apps`.
+# NOTE: demoApp is a template, not an end-user app -- drop it from `apps` before
+# cutting a release. See src/demoApp/README.md.
+demo-app:
+	@$(ECHO) $(PRINT_RECIPE)
+	@mkdir -p $(BUILD_DIR)/App/DemoApp
+	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(BUILD_DIR)/App/DemoApp" make
+	@cp $(SRC_DIR)/demoApp/config.json $(SRC_DIR)/demoApp/launch.sh $(BUILD_DIR)/App/DemoApp/
+	@chmod a+x $(BUILD_DIR)/App/DemoApp/launch.sh
+	@$(ECHO) $(PRINT_DONE)
 
 $(THIRD_PARTY_DIR)/RetroArch-patch/bin/retroarch_miyoo354:
 	@$(ECHO) $(PRINT_RECIPE)
@@ -253,15 +330,21 @@ pwd:
 	@echo $(ROOT_DIR)
 
 $(CACHE)/.docker:
-	docker pull $(TOOLCHAIN)
+	$(DOCKER_ENSURE_IMAGE)
 	$(makedir) cache
 	$(createfile) $(CACHE)/.docker
 
+# Force a rebuild/re-pull of the toolchain image, ignoring the cached stamp.
+toolchain-image:
+	$(TOOLCHAIN_ACQUIRE)
+	@$(makedir) cache
+	@$(createfile) $(CACHE)/.docker
+
 toolchain: $(CACHE)/.docker
-	docker run -it --rm -v "$(ROOT_DIR)":/root/workspace $(TOOLCHAIN) /bin/bash
+	$(DOCKER) run -it --rm --platform $(DOCKER_PLATFORM) -v "$(ROOT_DIR)":/root/workspace $(TOOLCHAIN) /bin/bash
 
 with-toolchain: $(CACHE)/.docker
-	docker run --rm -v "$(ROOT_DIR)":/root/workspace $(TOOLCHAIN) /bin/bash -c "source /root/.bashrc; make $(CMD)"
+	$(DOCKER) run --rm --platform $(DOCKER_PLATFORM) -v "$(ROOT_DIR)":/root/workspace $(TOOLCHAIN) /bin/bash -c "source /root/.bashrc; make $(CMD)"
 
 patch:
 	@chmod a+x $(ROOT_DIR)/.github/create_patch.sh && $(ROOT_DIR)/.github/create_patch.sh
