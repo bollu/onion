@@ -163,10 +163,23 @@ static void _modeLabel(char *out, size_t out_size)
              player_shuffle() ? "Shuffle on" : "Shuffle off", repeat_str);
 }
 
+/**
+ * Clears the screen and lays down the theme background.
+ *
+ * The clear is required: theme backgrounds are RGBA and can be partly
+ * transparent, so blitting one over a previous frame alpha-blends rather than
+ * covering it, and the old screen ghosts through when switching views.
+ */
+static void _renderBackground(SDL_Surface *screen)
+{
+    SDL_FillRect(screen, NULL, 0);
+    SDL_BlitSurface(theme_background(), NULL, screen, NULL);
+}
+
 /** The Now Playing screen: title, progress bar, times, and mode line. */
 void render_nowPlaying(SDL_Surface *screen)
 {
-    SDL_BlitSurface(theme_background(), NULL, screen, NULL);
+    _renderBackground(screen);
     theme_renderHeader(screen, "Now Playing", false);
 
     int index = player_currentIndex();
@@ -186,7 +199,7 @@ void render_nowPlaying(SDL_Surface *screen)
                             max_width);
 
         // Play state, so a paused track is obvious without reading the hint bar.
-        _renderCenteredText(screen, resource_getFont(HINT),
+        _renderCenteredText(screen, resource_getFont(LIST),
                             player_isPaused() ? "|| Paused" : "> Playing",
                             theme()->hint.color, (int)(196.0 * g_scale),
                             max_width);
@@ -207,13 +220,13 @@ void render_nowPlaying(SDL_Surface *screen)
             snprintf(time_str, sizeof(time_str), "%s", elapsed_str);
         }
 
-        _renderCenteredText(screen, resource_getFont(HINT), time_str,
+        _renderCenteredText(screen, resource_getFont(LIST), time_str,
                             theme()->hint.color, (int)(286.0 * g_scale),
                             max_width);
 
         char mode_str[80];
         _modeLabel(mode_str, sizeof(mode_str));
-        _renderCenteredText(screen, resource_getFont(HINT), mode_str,
+        _renderCenteredText(screen, resource_getFont(LIST), mode_str,
                             theme()->hint.color, (int)(330.0 * g_scale),
                             max_width);
     }
@@ -227,7 +240,7 @@ void render_nowPlaying(SDL_Surface *screen)
 /** The library list, with the current track shown in the sticky note. */
 void render_library(SDL_Surface *screen, List *list, bool has_tracks)
 {
-    SDL_BlitSurface(theme_background(), NULL, screen, NULL);
+    _renderBackground(screen);
     theme_renderHeader(screen, list->title, false);
 
     if (has_tracks) {

@@ -4,10 +4,33 @@ A native music player, intended to replace the vendored GMU build in
 `static/packages/App/Music Player (GMU)/`.
 
 **Status: feature-complete, untested on hardware.** It compiles warning-free to a
-118 KB ARM binary, and the two riskiest pieces — MP3 decoding and duration
-parsing — are verified against real files under emulation (see below). The UI
-itself has **never been run on a device**; treat layout and playback behaviour as
-unproven.
+118 KB ARM binary. MP3 decoding and duration parsing are verified against real
+files under emulation, and both screens have been rendered offscreen at the real
+640x480 with the stock theme (see "Rendering the UI without a device"). What
+remains unproven is anything requiring real hardware: audio output, the volume
+keys with `audioserver` killed, timing drift, and behaviour with the display off.
+
+## Rendering the UI without a device
+
+Both screens can be rendered offscreen, which is how the layout was checked. The
+trick is that the fallback theme lives at `/mnt/SDCARD/miyoo/app/`, which is
+`static/build/miyoo/app/` in this repo — so a container can fake an SD card:
+
+    mkdir -p /mnt/SDCARD && cp -r static/build/* /mnt/SDCARD/
+
+Then build a harness that calls `render_library()` / `render_nowPlaying()` and
+`SDL_SaveBMP`s the `screen` surface, and run it under `qemu-arm`. Three things
+are needed or it will not work:
+
+- `-DPLATFORM_MIYOOMINI`, or `DEFAULT_WIDTH/HEIGHT` in `system/display.h` fall
+  back to 752x560 and the render is the wrong size. `/dev/fb0` doesn't exist in a
+  container, so `display_getRenderResolution()` cannot correct it.
+- `SDL_VIDEODRIVER=dummy` and `SDL_AUDIODRIVER=dummy`.
+- The device's `libpng12.so.0` on `LD_LIBRARY_PATH` (from
+  `static/build/miyoo/lib/`). `libSDL_image` loads PNG via `dlopen` rather than
+  linking it, so without it every `IMG_Load` returns "Unsupported image format",
+  `theme_backgroundLoad()` passes NULL to `rotate180()`, and that dereferences
+  `original->format` and segfaults.
 
 ## Build
 
