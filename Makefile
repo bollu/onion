@@ -42,6 +42,10 @@ PACKAGES_DIR        := $(ROOT_DIR)/build/App/PackageManager/data
 PACKAGES_EMU_DEST   := $(PACKAGES_DIR)/Emu
 PACKAGES_APP_DEST   := $(PACKAGES_DIR)/App
 PACKAGES_RAPP_DEST  := $(PACKAGES_DIR)/RApp
+BEBOOK_DEST         := $(PACKAGES_APP_DEST)/BeBook/App/BeBook
+# Sysroot library directory inside the toolchain container, where bebook picks up the
+# FreeType it links against.
+PREFIX_LIB          := $(PREFIX)/lib
 TEMP_DIR            := $(ROOT_DIR)/cache/temp
 INCLUDE_DIR         := $(ROOT_DIR)/include
 ifeq (,$(GTEST_INCLUDE_DIR))
@@ -105,7 +109,7 @@ include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external demo-app music-player release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
+.PHONY: all version core apps external bebook demo-app music-player release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
 
 all: dist
 
@@ -216,6 +220,7 @@ apps: $(CACHE)/.setup
 	@find $(SRC_DIR)/packageManager -depth -type d -name res -exec cp -r {}/. $(BUILD_DIR)/App/PackageManager/res/ \;
 	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(PACKAGES_APP_DEST)/Music Player/App/MusicPlayer" make
 	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(PACKAGES_APP_DEST)/Demo App/App/DemoApp" make
+	@$(MAKE) bebook
 	@cd $(SRC_DIR)/clock && BUILD_DIR="$(BIN_DIR)" make
 	@cd $(SRC_DIR)/randomGamePicker && BUILD_DIR="$(BIN_DIR)" make
 # Preinstalled apps
@@ -226,6 +231,7 @@ apps: $(CACHE)/.setup
 	@cp -a "$(PACKAGES_APP_DEST)/ThemeSwitcher/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Music Player/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Demo App/." $(BUILD_DIR)/
+	@cp -a "$(PACKAGES_APP_DEST)/BeBook/." $(BUILD_DIR)/
 
 # Quick iteration target for the music player: builds just this app into build/,
 # skipping the rest of the release pipeline. It is also built by `apps`.
@@ -241,6 +247,26 @@ music-player:
 # skipping the rest of the release pipeline. It is also built by `apps`.
 # NOTE: demoApp is a template, not an end-user app -- drop it from `apps` before
 # cutting a release. See src/demoApp/README.md.
+# bebook keeps its own Makefile rather than using src/common/*.mk: it is C++17 across a
+# nested source tree, needs FreeType/libzip/libxml2, and compiles HarfBuzz from a
+# single-file amalgamation with per-file flags that the shared config cannot express.
+# This is the same arrangement as third-party/DinguxCommander, which also builds itself.
+bebook:
+	@$(ECHO) $(PRINT_RECIPE)
+	@cd $(SRC_DIR)/bebook && HB_DIR="$(THIRD_PARTY_DIR)/harfbuzz/src" $(MAKE) reader
+	@mkdir -p "$(BEBOOK_DEST)/lib" "$(BEBOOK_DEST)/resources/fonts"
+	@cp $(SRC_DIR)/bebook/build/bebook "$(BEBOOK_DEST)/"
+	@cp $(SRC_DIR)/bebook/resources/fonts/*.ttf $(SRC_DIR)/bebook/resources/fonts/*.txt \
+	    "$(BEBOOK_DEST)/resources/fonts/"
+# FreeType comes from the toolchain sysroot; libzip and libxml2 are absent from it and
+# from Onion's lib/, so bebook vendors them. HarfBuzz is compiled into the binary and
+# needs no library, and SDL_ttf/SDL_image are not linked at all.
+	@cp $(PREFIX_LIB)/libfreetype.so.6 "$(BEBOOK_DEST)/lib/"
+	@cp $(SRC_DIR)/bebook/deps/lib/libzip.so.5 $(SRC_DIR)/bebook/deps/lib/libxml2.so.2 \
+	    $(SRC_DIR)/bebook/deps/lib/libz.so.1 $(SRC_DIR)/bebook/deps/lib/liblzma.so.5 \
+	    "$(BEBOOK_DEST)/lib/"
+	@$(ECHO) $(PRINT_DONE)
+
 demo-app:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p $(BUILD_DIR)/App/DemoApp

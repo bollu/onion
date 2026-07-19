@@ -1,0 +1,13 @@
+{
+"label":"Books",
+"icon":"../../Icons/Default/app/ereader.png",
+"iconsel":"../../Icons/Default/app/ereader.png",
+"launch":"launch.sh",
+"rompath":"../../Roms/EBOOK",
+"imgpath":"../../Roms/EBOOK/Imgs",
+"gamelist":"../../Roms/EBOOK/miyoogamelist.xml",
+"useswap":0,
+"shortname":0,
+"hidebios":0,
+"extlist":"epub|txt"
+}

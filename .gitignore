@@ -41,3 +41,8 @@ src/sendUDP/sendUDP
 src/tree/tree
 src/pippi/pippi
 src/cpuclock/cpuclock
+
+# bebook build output and local runtime state
+src/bebook/build/
+src/bebook/.bebook_store/
+src/bebook/bebook.cfg
