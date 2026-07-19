@@ -44,7 +44,16 @@ LDFLAGS := $(LDFLAGS) \
 endif
 
 CXX      := $(CROSS_COMPILE)c++
-BUILD    := ./build
+
+# Per-platform, and overridable, because builds must not share object files -- or, worse,
+# the .d dependency files GCC writes, which record absolute include paths. Mixing them
+# fails with "No rule to make target '/opt/miyoomini-toolchain/.../ft2build.h'", which
+# says nothing about the real cause.
+#
+# PLATFORM alone is not enough: a build inside a Linux container and one on a Linux or
+# macOS host are both PLATFORM=linux but have entirely different include paths. The
+# containerised targets in Onion's Makefile therefore override this.
+BUILD    ?= ./build/$(PLATFORM)
 OBJ_DIR  := $(BUILD)/objects
 APP_DIR  := $(BUILD)
 
@@ -94,7 +103,9 @@ SANDBOX_SRC  := $(COMMON_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wild
 
 # Standalone type-specimen renderer. Depends only on the text engine, SDL and FreeType,
 # deliberately: typography can then be iterated on without a working epub/zip/xml stack.
-SPECIMEN_SRC     := src/sandbox/text_specimen.cpp $(wildcard src/text/*.cpp)
+# sdl_pointer.cpp supplies the deleter behind surface_unique_ptr, which text/font.cpp
+# uses; without it the link fails on SDL_Deleter::operator().
+SPECIMEN_SRC     := src/sandbox/text_specimen.cpp $(wildcard src/text/*.cpp) src/util/sdl_pointer.cpp
 SPECIMEN_OBJECTS := $(SPECIMEN_SRC:%.cpp=$(OBJ_DIR)/%.o) $(HB_OBJECT)
 TEST_SRC     := $(COMMON_SRC) $(wildcard src/sys/tests/*.cpp src/reader/tests/*.cpp src/filetypes/epub/tests/*.cpp src/util/tests/*.cpp src/doc_api/tests/*.cpp src/text/tests/*.cpp)
 

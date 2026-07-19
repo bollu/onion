@@ -81,11 +81,11 @@ Onion's sysroot already carries everything bebook needs — FreeType 2.10.1, lib
 libxml2, SDL 1.2 — because it is the same buildroot sysroot bebook was developed
 against.
 
-One gotcha: host and container builds share `build/`, and the `.d` files GCC writes
-record absolute include paths. A container build followed by a host build therefore
-fails with `No rule to make target
-'/opt/miyoomini-toolchain/.../ft2build.h'`. Run `make clean` when switching, or give the
-Onion build its own `BUILD` directory.
+Host and cross builds write to `build/$(PLATFORM)/` rather than a shared `build/`. They
+must not share: the `.d` dependency files GCC emits record absolute include paths, so a
+cross build followed by a host build used to fail with `No rule to make target
+'/opt/miyoomini-toolchain/.../ft2build.h'` -- a message that points nowhere near the
+cause.
 
 ### Runtime dependencies of the built binary
 

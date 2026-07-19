@@ -81,6 +81,23 @@ endif
 
 DOCKER_PLATFORM ?= linux/$(HOST_ARCH)
 
+# Both Containerfiles here are self-contained -- they apt-get and wget, and never COPY --
+# so they need no build context at all. Passing $(ROOT_DIR) makes the container runtime
+# tar the entire repository (build output, cache, submodules, website) and ship it to the
+# daemon on every image build, which is slow and has filled a podman VM's disk outright.
+# An empty directory is the correct context.
+EMPTY_CONTEXT := $(CACHE)/empty-context
+
+# Native image used to run bebook's test suite. Separate from the cross-toolchain, which
+# produces armv7 binaries that cannot be executed here.
+BEBOOK_TEST_IMAGE ?= localhost/bebook-test:latest
+BEBOOK_TEST_ACQUIRE = $(makedir) $(EMPTY_CONTEXT) && $(DOCKER) build -f $(ROOT_DIR)/Containerfile.bebook-test --platform $(DOCKER_PLATFORM) -t $(BEBOOK_TEST_IMAGE) $(EMPTY_CONTEXT)
+BEBOOK_IN_CONTAINER = $(DOCKER) run --rm --platform $(DOCKER_PLATFORM) -v "$(ROOT_DIR)":/root/workspace -w /root/workspace/src/bebook $(BEBOOK_TEST_IMAGE)
+# HarfBuzz is a submodule of this repo, not of bebook. BUILD is overridden so a
+# containerised build never shares object or dependency files with a developer's host
+# build of the same PLATFORM.
+BEBOOK_MAKE = make HB_DIR=/root/workspace/third-party/harfbuzz/src BUILD=./build/container
+
 # The upstream toolchain image is published for linux/amd64 only. On an amd64 host
 # we just pull it. On any other host (e.g. Apple silicon) running it would require
 # qemu emulation, which is slow and, under podman on macOS, does not work at all --
@@ -94,7 +111,7 @@ TOOLCHAIN ?= aemiii91/miyoomini-toolchain:latest
 TOOLCHAIN_ACQUIRE = $(DOCKER) pull --platform $(DOCKER_PLATFORM) $(TOOLCHAIN)
 else
 TOOLCHAIN ?= localhost/miyoomini-toolchain:latest
-TOOLCHAIN_ACQUIRE = $(DOCKER) build -f $(ROOT_DIR)/Containerfile.toolchain --platform $(DOCKER_PLATFORM) -t $(TOOLCHAIN) $(ROOT_DIR)
+TOOLCHAIN_ACQUIRE = $(makedir) $(EMPTY_CONTEXT) && $(DOCKER) build -f $(ROOT_DIR)/Containerfile.toolchain --platform $(DOCKER_PLATFORM) -t $(TOOLCHAIN) $(EMPTY_CONTEXT)
 endif
 
 # Acquire the image only when it isn't already present, so a locally built
@@ -109,7 +126,7 @@ include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external bebook demo-app music-player release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
+.PHONY: all version core apps external bebook bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
 
 all: dist
 
@@ -220,6 +237,7 @@ apps: $(CACHE)/.setup
 	@find $(SRC_DIR)/packageManager -depth -type d -name res -exec cp -r {}/. $(BUILD_DIR)/App/PackageManager/res/ \;
 	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(PACKAGES_APP_DEST)/Music Player/App/MusicPlayer" make
 	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(PACKAGES_APP_DEST)/Demo App/App/DemoApp" make
+	@cd $(SRC_DIR)/pcLink && BUILD_DIR="$(PACKAGES_APP_DEST)/PCLink/App/PCLink" make
 	@$(MAKE) bebook
 	@cd $(SRC_DIR)/clock && BUILD_DIR="$(BIN_DIR)" make
 	@cd $(SRC_DIR)/randomGamePicker && BUILD_DIR="$(BIN_DIR)" make
@@ -229,9 +247,20 @@ apps: $(CACHE)/.setup
 	@cp -a "$(PACKAGES_APP_DEST)/RetroArch (Shortcut)/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Tweaks/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/ThemeSwitcher/." $(BUILD_DIR)/
+	@cp -a "$(PACKAGES_APP_DEST)/PCLink/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Music Player/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Demo App/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/BeBook/." $(BUILD_DIR)/
+
+# Quick iteration target for PC Link: builds just this app into build/, skipping
+# the rest of the release pipeline. It is also built by `apps`.
+pc-link:
+	@$(ECHO) $(PRINT_RECIPE)
+	@mkdir -p $(BUILD_DIR)/App/PCLink
+	@cd $(SRC_DIR)/pcLink && BUILD_DIR="$(BUILD_DIR)/App/PCLink" make
+	@cp $(SRC_DIR)/pcLink/config.json $(SRC_DIR)/pcLink/launch.sh $(BUILD_DIR)/App/PCLink/
+	@chmod a+x $(BUILD_DIR)/App/PCLink/launch.sh
+	@$(ECHO) $(PRINT_DONE)
 
 # Quick iteration target for the music player: builds just this app into build/,
 # skipping the rest of the release pipeline. It is also built by `apps`.
@@ -255,7 +284,7 @@ bebook:
 	@$(ECHO) $(PRINT_RECIPE)
 	@cd $(SRC_DIR)/bebook && HB_DIR="$(THIRD_PARTY_DIR)/harfbuzz/src" $(MAKE) reader
 	@mkdir -p "$(BEBOOK_DEST)/lib" "$(BEBOOK_DEST)/resources/fonts"
-	@cp $(SRC_DIR)/bebook/build/bebook "$(BEBOOK_DEST)/"
+	@cp $(SRC_DIR)/bebook/build/miyoomini/bebook "$(BEBOOK_DEST)/"
 	@cp $(SRC_DIR)/bebook/resources/fonts/*.ttf $(SRC_DIR)/bebook/resources/fonts/*.txt \
 	    "$(BEBOOK_DEST)/resources/fonts/"
 # FreeType comes from the toolchain sysroot; libzip and libxml2 are absent from it and
@@ -365,6 +394,55 @@ toolchain-image:
 	$(TOOLCHAIN_ACQUIRE)
 	@$(makedir) cache
 	@$(createfile) $(CACHE)/.docker
+
+$(CACHE)/.bebook-docker:
+	$(BEBOOK_TEST_ACQUIRE)
+	@$(makedir) cache
+	@$(createfile) $(CACHE)/.bebook-docker
+
+bebook-test-image:
+	$(BEBOOK_TEST_ACQUIRE)
+	@$(makedir) cache
+	@$(createfile) $(CACHE)/.bebook-docker
+
+# Builds bebook for the host and runs its suite. The cross-compile is already covered by
+# `make build`, which reaches bebook through `apps`; this is the part that executes.
+bebook-test: $(CACHE)/.bebook-docker
+	@$(ECHO) $(PRINT_RECIPE)
+	$(BEBOOK_IN_CONTAINER) $(BEBOOK_MAKE) test
+	@$(ECHO) $(PRINT_DONE)
+
+# Renders type specimens to PNG. An end-to-end check of font loading, shaping,
+# rasterization and compositing, which the unit tests avoid because they would otherwise
+# have to depend on a font file.
+bebook-specimen: $(CACHE)/.bebook-docker
+	@$(ECHO) $(PRINT_RECIPE)
+	$(BEBOOK_IN_CONTAINER) sh -c '$(BEBOOK_MAKE) specimen && mkdir -p build/container/specimens && ./build/container/specimen build/container/specimens'
+	@$(ECHO) $(PRINT_DONE)
+
+# Reclaims container disk. Image builds accumulate layers and build caches inside the
+# container runtime's own storage -- on macOS that is a VM disk image that only ever
+# grows, and filling it makes builds fail with I/O errors rather than a clear message.
+# Run this periodically; everything it removes is rebuilt on demand.
+container-prune:
+	@$(ECHO) $(PRINT_RECIPE)
+	-$(DOCKER) container prune -f
+	-$(DOCKER) image prune -f
+	-$(DOCKER) system prune -f
+	-@rm -f $(CACHE)/.docker $(CACHE)/.bebook-docker
+	-$(DOCKER) system df
+	@$(ECHO) $(PRINT_DONE)
+
+# Everything, including the toolchain images. Frees the most; costs a full rebuild.
+container-prune-all:
+	@$(ECHO) $(PRINT_RECIPE)
+	-$(DOCKER) system prune -a -f
+	-@rm -f $(CACHE)/.docker $(CACHE)/.bebook-docker
+	-$(DOCKER) system df
+	@$(ECHO) $(PRINT_DONE)
+
+bebook-shell: $(CACHE)/.bebook-docker
+	$(DOCKER) run -it --rm --platform $(DOCKER_PLATFORM) -v "$(ROOT_DIR)":/root/workspace -w /root/workspace/src/bebook $(BEBOOK_TEST_IMAGE) /bin/bash
 
 toolchain: $(CACHE)/.docker
 	$(DOCKER) run -it --rm --platform $(DOCKER_PLATFORM) -v "$(ROOT_DIR)":/root/workspace $(TOOLCHAIN) /bin/bash

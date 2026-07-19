@@ -1,0 +1,43 @@
+name: bebook
+
+# The cross-compile is already covered by "Check build", which runs `make build` and
+# reaches bebook through `apps`. That produces an armv7 binary and so can never execute
+# anything. This workflow is the part that runs: bebook's own suite, built for the host.
+on:
+  pull_request:
+    paths:
+      - 'src/bebook/**'
+      - 'third-party/harfbuzz'
+      - 'Containerfile.bebook-test'
+      - '.github/workflows/bebook.yml'
+  merge_group:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # HarfBuzz is a submodule and is compiled from its amalgamation, so a
+          # non-recursive checkout fails the build outright.
+          submodules: recursive
+
+      # The environment is a Containerfile rather than apt-get steps here, so that
+      # `make bebook-test` behaves the same on a developer's machine as it does in CI.
+      - name: Run test suite
+        run: make bebook-test
+
+      # End-to-end proof of the text engine -- font loading, shaping, rasterization and
+      # gamma-correct compositing -- which the unit tests deliberately do not cover,
+      # because doing so would make them depend on a font file.
+      - name: Render type specimens
+        run: make bebook-specimen
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bebook-type-specimens
+          path: src/bebook/build/container/specimens/*.png
+          if-no-files-found: error

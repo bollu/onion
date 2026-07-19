@@ -1,0 +1,59 @@
+# Host-build environment for bebook's test suite.
+#
+# WHY THIS IS SEPARATE FROM THE TOOLCHAIN IMAGE
+# ---------------------------------------------
+# Containerfile.toolchain cross-compiles for armv7. Its output cannot be executed, so it
+# can build bebook but never run a test. Running the suite needs a native toolchain and
+# native copies of bebook's dependencies, which is what this image is.
+#
+# It is also deliberately not the same dependency set as the rest of Onion. bebook links
+# no SDL_ttf and no SDL_image — it replaced both with FreeType/HarfBuzz and a vendored
+# stb_image — so installing them here would only disguise an accidental dependency on
+# them creeping back in.
+#
+# WHY AN IMAGE RATHER THAN apt-get IN THE WORKFLOW
+# ------------------------------------------------
+# So that `make bebook-test` behaves identically on a developer's machine and in CI. A
+# workflow that apt-gets its own dependencies can only be reproduced by reading it.
+#
+# USE
+#   make bebook-test          # build the image if needed, then run the suite
+#   make bebook-test-image    # force a rebuild of the image
+#   make bebook-shell         # interactive shell in it
+
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# libsdl1.2-compat-dev is SDL 1.2's API on top of SDL2; bookworm no longer ships the
+# original. bebook only uses surfaces, blitting and events, all of which it covers.
+RUN apt-get -y update && apt-get -y install --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        git \
+        make \
+        pkg-config \
+        libsdl1.2-compat-dev \
+        libfreetype-dev \
+        libxml2-dev \
+        libzip-dev \
+        libgtest-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian ships googletest as sources on some releases and as prebuilt archives on others.
+# Build and install them when the archives are absent, so the Makefile can simply link
+# -lgtest either way.
+RUN set -eu; \
+    if ! ls /usr/lib/*/libgtest.a >/dev/null 2>&1; then \
+        cmake -S /usr/src/googletest -B /tmp/gtest-build; \
+        cmake --build /tmp/gtest-build --target install; \
+    fi
+
+# SDL needs a video driver to initialise even when nothing is displayed. The specimen
+# renderer draws into an offscreen surface and writes a PNG, so a dummy driver is enough.
+ENV SDL_VIDEODRIVER=dummy
+
+RUN mkdir -p /root/workspace
+WORKDIR /root/workspace
+CMD ["/bin/bash"]
