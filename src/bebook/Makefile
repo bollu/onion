@@ -89,7 +89,12 @@ DEP_CFLAGS := $(shell pkg-config --cflags libzip libxml-2.0 2>/dev/null)
 DEP_LIBS   := $(shell pkg-config --libs libzip libxml-2.0 2>/dev/null)
 endif
 
-INCLUDE  := -Isrc $(DEP_CFLAGS) -I$(HB_DIR) $(FREETYPE_CFLAGS) $(SDL_CFLAGS)
+# src/common is Onion's shared header tree, included for utils/hash.h alone: the
+# Game Switcher names preview files by that hash, and a second copy here would be
+# free to drift out of step with it. Safe to add wholesale -- bebook's own headers
+# live under util/ and sys/, Onion's under utils/ and system/, so nothing shadows.
+ONION_COMMON := ../common
+INCLUDE  := -Isrc -I$(ONION_COMMON) $(DEP_CFLAGS) -I$(HB_DIR) $(FREETYPE_CFLAGS) $(SDL_CFLAGS)
 
 # Appended only once every pkg-config-derived variable above exists. LDFLAGS is a :=
 # variable, so referencing them any earlier would silently expand to nothing.
