@@ -7,6 +7,7 @@
 #include "reader/config.h"
 #include "reader/system_styling.h"
 #include "reader/shoulder_keymap.h"
+#include "sys/battery.h"
 #include "sys/keymap.h"
 #include "sys/screen.h"
 #include "util/sdl_utils.h"
@@ -336,6 +337,59 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
 
         const int title_baseline = line_y + leading_above + ascent;
 
+        // Battery, at the far right. A glyph rather than a second percentage: a number
+        // here would sit beside the reading progress with nothing to say which was
+        // which. Absent when it cannot be read, so nothing changes off-device.
+        int battery_w = 0;
+        {
+            const int battery_percent = read_battery_percent();
+            if (battery_percent >= 0)
+            {
+                const int body_h = std::max(6, line_height / 3);
+                const int body_w = body_h * 2;
+                const int cap_w = std::max(1, body_h / 4);
+                const int cap_h = std::max(2, body_h / 2);
+                battery_w = body_w + cap_w + margin_x / 2;
+
+                const int x = SCREEN_WIDTH - margin_x - body_w - cap_w;
+                const int y = line_y + (line_height - body_h) / 2;
+
+                const Uint32 fg = SDL_MapRGB(
+                    dest_surface->format,
+                    theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b
+                );
+                const Uint32 bg = SDL_MapRGB(
+                    dest_surface->format,
+                    theme.background.r, theme.background.g, theme.background.b
+                );
+
+                // Outline, hollowed out, then filled to the charge level.
+                SDL_Rect body = {(Sint16)x, (Sint16)y, (Uint16)body_w, (Uint16)body_h};
+                SDL_FillRect(dest_surface, &body, fg);
+                SDL_Rect inner = {
+                    (Sint16)(x + 1), (Sint16)(y + 1),
+                    (Uint16)(body_w - 2), (Uint16)(body_h - 2)
+                };
+                SDL_FillRect(dest_surface, &inner, bg);
+
+                const int fill_w = ((body_w - 4) * battery_percent) / 100;
+                if (fill_w > 0)
+                {
+                    SDL_Rect fill = {
+                        (Sint16)(x + 2), (Sint16)(y + 2),
+                        (Uint16)fill_w, (Uint16)(body_h - 4)
+                    };
+                    SDL_FillRect(dest_surface, &fill, fg);
+                }
+
+                SDL_Rect cap = {
+                    (Sint16)(x + body_w), (Sint16)(y + (body_h - cap_h) / 2),
+                    (Uint16)cap_w, (Uint16)cap_h
+                };
+                SDL_FillRect(dest_surface, &cap, fg);
+            }
+        }
+
         // Progress
         {
             char percent_str[32];
@@ -346,11 +400,11 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
 
             text::draw_text(
                 dest_surface, font, percent_str,
-                SCREEN_WIDTH - percent_w - margin_x, title_baseline,
+                SCREEN_WIDTH - percent_w - margin_x - battery_w, title_baseline,
                 theme.secondary_text, theme.background
             );
 
-            title_crop_rect.w = SCREEN_WIDTH - margin_x * 2 - percent_w;
+            title_crop_rect.w = SCREEN_WIDTH - margin_x * 2 - percent_w - battery_w;
         }
 
         // Toc item. Clipped rather than cropped from an oversized surface, so a long
