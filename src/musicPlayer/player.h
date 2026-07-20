@@ -11,17 +11,8 @@
 #include "./library.h"
 #include "./mp3.h"
 
-/**
- * Playback state on top of SDL_mixer's Mix_Music API.
- *
- * Mix_OpenAudio() is already called by SDL_InitDefault() when built with
- * HAS_AUDIO, so there is no audio init here. Only one Mix_Music can be loaded at
- * a time - loading a track frees the previous one.
- *
- * SDL_mixer 1.2 reports neither duration nor play position, so both are tracked
- * here: duration comes from mp3.h, and elapsed time is measured with SDL_GetTicks
- * against a base offset that seeking and pausing adjust.
- */
+// SDL_mixer 1.2 reports neither duration nor position, so both are tracked here.
+// Mix_OpenAudio() is done by SDL_InitDefault(); only one Mix_Music loads at a time.
 
 typedef enum RepeatMode { REPEAT_OFF,
                           REPEAT_ALL,
@@ -57,8 +48,7 @@ double player_elapsed(void)
 
     double elapsed = _base_offset + (SDL_GetTicks() - _play_start_ticks) / 1000.0;
 
-    // Don't let the display run past the end while waiting for the poll in the
-    // main loop to notice the track finished.
+    // Don't run past the end before the main loop's poll notices.
     if (_duration > 0.0 && elapsed > _duration)
         return _duration;
 
@@ -114,12 +104,10 @@ void player_togglePause(void)
 
     if (_paused) {
         Mix_ResumeMusic();
-        // Resume the clock from where it was frozen.
         _play_start_ticks = SDL_GetTicks();
         _paused = false;
     }
     else {
-        // Freeze the clock at the current position.
         _base_offset = player_elapsed();
         Mix_PauseMusic();
         _paused = true;
@@ -146,8 +134,7 @@ int player_nextIndex(bool user_initiated)
     int next = _current_index + 1;
 
     if (next >= track_count) {
-        // A user pressing "next" on the last track always wraps; reaching the
-        // end during playback only wraps when repeating.
+        // Pressing next always wraps; running off the end wraps only when repeating.
         if (user_initiated || _repeat == REPEAT_ALL)
             return 0;
         return -1;
@@ -170,7 +157,7 @@ void player_previous(void)
     if (track_count == 0 || _current_index < 0)
         return;
 
-    // Standard behaviour: restart the track unless we're near its start.
+    // Restart the track unless we are near its start.
     if (player_elapsed() > 3.0) {
         player_play(_current_index);
         return;
@@ -200,8 +187,7 @@ void player_seek(double delta)
         _play_start_ticks = SDL_GetTicks();
     }
     else {
-        // Mix_SetMusicPosition only works for some formats; leave the clock
-        // alone if the backend refused, so the display stays truthful.
+        // Leave the clock alone if the backend refused, so the display stays honest.
         printf_debug("Seek failed: %s\n", Mix_GetError());
     }
 }

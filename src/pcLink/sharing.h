@@ -12,15 +12,7 @@
 #include "utils/process.h"
 #include "utils/str.h"
 
-/**
- * Brings up the device's own access point and a samba server on top of it, so a
- * computer can join the Miyoo directly and mount the SD card.
- *
- * Everything here shells out to scripts Onion already ships; none of this is
- * reimplemented. The same hotspot path is what netplay uses for local multiplayer
- * (easy-netplay_server.sh sources hotspot_create.sh the same way).
- */
-
+// Brings up the device's own AP plus samba, reusing the scripts netplay already uses.
 #define NET_SCRIPT_DIR "/mnt/SDCARD/.tmp_update/script/network"
 #define DHCP_LEASES "/mnt/SDCARD/.tmp_update/config/dhcp.leases"
 #define HOSTAPD_CONF "/mnt/SDCARD/.tmp_update/config/hostapd.conf"
@@ -57,10 +49,7 @@ static const char *sharing_stepLabel(SharingStep step)
 bool sharing_hotspotRunning(void) { return process_isRunning("hostapd"); }
 bool sharing_smbdRunning(void) { return process_isRunning("smbd"); }
 
-/**
- * Reads the SSID and passphrase out of hostapd.conf rather than hardcoding them,
- * so the on-screen instructions stay correct if the config is edited.
- */
+// Read from hostapd.conf, not hardcoded, so the on-screen instructions stay true.
 void sharing_getApCredentials(char *ssid_out, char *pass_out, size_t size)
 {
     snprintf(ssid_out, size, "%s", "(unknown)");
@@ -87,12 +76,7 @@ void sharing_getApCredentials(char *ssid_out, char *pass_out, size_t size)
     fclose(fp);
 }
 
-/**
- * Bare IPv4 address of the AP interface, e.g. "192.168.100.100".
- *
- * netinfo_getIpAddress() returns a display label ("IP address: x (wlan1)"), so the
- * address is pulled back out of it rather than duplicating the ioctl here.
- */
+// Bare IPv4 of the AP interface; netinfo returns a label, so parse the address back.
 void sharing_getApAddress(char *out, size_t size)
 {
     char label[STR_MAX] = "";
@@ -102,7 +86,7 @@ void sharing_getApAddress(char *out, size_t size)
         snprintf(out, size, "%s", "0.0.0.0");
 }
 
-/** Number of DHCP leases handed out, i.e. computers currently joined. */
+// DHCP leases handed out, i.e. computers currently joined.
 int sharing_clientCount(void)
 {
     FILE *fp = fopen(DHCP_LEASES, "r");
@@ -120,13 +104,7 @@ int sharing_clientCount(void)
     return count;
 }
 
-/**
- * Runs one step of the startup sequence. Split into steps so the caller can draw
- * progress between them: hotspot bring-up takes several seconds and a frozen
- * screen reads as a crash.
- *
- * Returns false if the step failed.
- */
+// One startup step, so the caller can draw progress between the slow ones.
 bool sharing_runStep(SharingStep step)
 {
     switch (step) {
@@ -157,13 +135,7 @@ bool sharing_runStep(SharingStep step)
     }
 }
 
-/**
- * Tears everything down and restores normal WiFi.
- *
- * Safe to call when nothing is running - hotspot_cleanup.sh branches on whether
- * hostapd is up. This must run on every exit path, including signals: leaving the
- * device in AP mode with wlan0 down looks exactly like "WiFi is broken".
- */
+// Tears everything down and restores normal WiFi.
 void sharing_stop(void)
 {
     if (sharing_smbdRunning())

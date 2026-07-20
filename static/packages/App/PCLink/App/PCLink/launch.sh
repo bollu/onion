@@ -2,8 +2,7 @@
 echo $0 $*
 cd $(dirname "$0")
 
-# Suppress hibernation: keymon SIGSTOPs everything on screen-off unless this
-# exists, which would freeze the hotspot mid-transfer.
+# keymon SIGSTOPs everything on screen-off unless this exists.
 touch /tmp/stay_awake
 
 ./pcLink

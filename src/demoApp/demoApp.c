@@ -1,19 +1,10 @@
-/**
- * demoApp - a minimal "hello world" app, meant as a starting point for new apps.
- *
- * It draws a themed screen with a header, a line of text, and a footer hint, then
- * exits on B or MENU. Everything it does is the same way the real apps do it, so
- * copying this directory is a reasonable way to start something new.
- *
- * See README.md in this directory for how to wire a new app into the build.
- */
+// A minimal themed app to copy when starting a new one. See README.md.
 
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 
-// Include theme/theme.h rather than the individual theme/render/*.h headers: it
-// pulls them in via theme/render.h in an order that resolves their interdependencies.
+// theme/theme.h, not the individual render headers: it orders them correctly.
 #include "system/battery.h"
 #include "system/keymap_sw.h"
 #include "system/lang.h"
@@ -47,12 +38,10 @@ int main(void)
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
 
-    // Creates `video` (the hardware surface) and `screen` (what we draw into),
-    // and starts SDL/TTF. Both are declared in utils/sdl_init.h.
+    // Creates `video` (hardware) and `screen` (what we draw into).
     SDL_InitDefault();
 
-    // settings_load() must come before lang_load(): the language file to load is
-    // named by settings.language.
+    // settings_load() first: it names the language file lang_load() reads.
     settings_load();
     lang_load();
 
@@ -85,8 +74,7 @@ int main(void)
                 TTF_RenderUTF8_Blended(font, "Hello, world!", theme()->list.color);
 
             if (text != NULL) {
-                // Centre the text in the screen, using the real surface size so
-                // this stays correct on both 640x480 and higher-res devices.
+                // Centred using the real surface size, so any resolution works.
                 SDL_Rect pos = {(screen->w - text->w) / 2,
                                 (screen->h - text->h) / 2};
                 SDL_BlitSurface(text, NULL, screen, &pos);
@@ -108,7 +96,7 @@ int main(void)
         acc_ticks -= time_step;
     }
 
-    // Leave a blank screen behind rather than a stale frame.
+    // Blank rather than a stale frame.
     SDL_FillRect(video, NULL, 0);
     SDL_Flip(video);
 

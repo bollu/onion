@@ -1,15 +1,5 @@
-/**
- * pcLink - share the SD card with a computer over the device's own Wi-Fi hotspot.
- *
- * The Miyoo Mini Plus USB-C port is charge-only: its data lines are not routed to
- * the SoC, so the card cannot be mounted over a cable. This is the closest
- * equivalent - the device becomes its own access point and serves the card over
- * SMB, so a computer joins it directly with no router, no internet and no network
- * credentials beyond one fixed password.
- *
- * All of the plumbing already existed for netplay; this only drives it and shows
- * the user what to type. See sharing.h.
- */
+// PCLink: shares the SD card over the device's own hotspot, since the USB-C port
+// is charge-only. Drives scripts netplay already ships. See README.md.
 
 #include <signal.h>
 #include <stdbool.h>
@@ -40,8 +30,7 @@ typedef enum View { VIEW_IDLE,
 
 static bool quit = false;
 
-// Set from the signal handler, so teardown happens on the main thread rather than
-// calling system() from a handler.
+// Set in the handler; teardown runs on the main thread, not from the handler.
 static volatile sig_atomic_t terminated = 0;
 
 static void sigHandler(int sig)
@@ -61,16 +50,13 @@ int main(void)
 {
     log_setName("pcLink");
 
-    // pressMenu2Kill can SIGTERM this app while the hotspot is up, so teardown has
-    // to survive signals - otherwise the user is left with no Wi-Fi and no
-    // indication why.
+    // pressMenu2Kill can SIGTERM us mid-share, and teardown must still run.
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
 
     SDL_InitDefault();
 
-    // settings_load() must precede lang_load(): the language file is named by
-    // settings.language.
+    // settings_load() first: it names the language file lang_load() reads.
     settings_load();
     lang_load();
 
@@ -96,8 +82,7 @@ int main(void)
                 quit = true;
             }
             else if (keystate[SW_BTN_B] == PRESSED) {
-                // While sharing, B stops sharing rather than exiting, so the user
-                // can't walk away leaving the device in AP mode by accident.
+                // While sharing, B stops sharing so the AP is never left up.
                 if (view == VIEW_SHARING)
                     view = VIEW_STOPPING;
                 else
@@ -150,8 +135,7 @@ int main(void)
             redraw = false;
         }
 
-        // Blocking work runs *after* the frame is drawn, so the screen already
-        // shows what is happening while it runs.
+        // After the frame is drawn, so the screen shows what is happening.
         if (view == VIEW_STARTING) {
             if (!sharing_runStep(step)) {
                 printf_debug("Step %d failed\n", (int)step);
@@ -175,8 +159,7 @@ int main(void)
         acc_ticks -= time_step;
     }
 
-    // Unconditional teardown. Covers MENU, B, SIGTERM, and quitting mid-startup:
-    // sharing_stop() is safe when nothing is running.
+    // Unconditional: covers MENU, B, SIGTERM and quitting mid-startup.
     if (terminated)
         printf_debug("Terminated by signal, tearing down\n");
     sharing_stop();

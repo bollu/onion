@@ -1,27 +1,19 @@
 #!/bin/sh
 # Launched by MainUI with the track path as $1.
 #
-# Registering music as a "system" is what puts individual tracks in OnionOS Recents
-# and the Game Switcher: MainUI writes Roms/recentlist.json itself whenever it
-# launches an entry from a system registered by an Emu/*/config.json, and the Game
-# Switcher only accepts entries of type 5 (game) -- an app launch records type 3 and
-# is discarded. So the app alone can never appear there; a track can.
-#
-# The cd is required: config.json and the theme resolve relative to the working
-# directory. $1 arrives absolute, so cd'ing away is safe.
+# Registering music as a system is what puts individual tracks in Recents and the
+# Game Switcher: an app launch records type 3, which the switcher discards.
+# The cd is required; $1 arrives absolute, so it is safe.
 cd /mnt/SDCARD/App/OnionMusic || exit 1
 
-# Do NOT stop audioserver: this app links the system SDL_mixer, whose audio goes
-# through it. Killing it makes Mix_OpenAudio block. See App/OnionMusic/launch.sh.
+# Do NOT stop audioserver: killing it makes Mix_OpenAudio block. See App/OnionMusic.
 
-# Decoding MP3 on this SoC is tight enough that the ondemand governor can let
-# the audio buffer underrun. GMU and MiyooPod both pin performance for the same
-# reason; unlike GMU, this puts it back afterwards.
+# Pin performance while decoding, or the audio buffer can underrun.
 governor_path=/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 old_governor=$(cat $governor_path 2>/dev/null)
 echo performance > $governor_path 2>/dev/null
 
-# Suppress hibernation while playing (read by keymon).
+# keymon reads this and skips hibernate.
 touch /tmp/stay_awake
 
 ./musicPlayer "$@" 2>log.txt

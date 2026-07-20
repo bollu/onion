@@ -12,20 +12,7 @@
 #include <string.h>
 #define _PADr_KAZE(x, n) (((x) << (n)) >> (n))
 
-// The 64-bit loads go through memcpy rather than casting the char* straight to a
-// uint64_t*. The cast is an unaligned read -- `str + NDhead` lands on an arbitrary
-// offset -- which is undefined behaviour, and on ARM it is a real fault rather than a
-// theoretical one: the same code built for armv7 takes SIGBUS under qemu-arm.
-//
-// It evidently survives on the device, most plausibly because the ARM kernel fixes up
-// unaligned accesses in a trap handler, which qemu-user does not emulate. That is not
-// something to rely on: it is slow (a trap per access) and it is not a guarantee.
-// Build flags do not help -- verified that -marm -mtune=cortex-a7 -march=armv7ve
-// faults exactly the same, so this is about the access itself, not codegen tuning.
-//
-// memcpy of a fixed size folds back into the same single load when the address is
-// aligned, so this costs nothing, and the hash value is unchanged (checked against
-// the previous implementation on empty, 5, 8, 9, 29, 37 and 73-byte inputs).
+// Via memcpy, not a cast: str + NDhead is unaligned, which is SIGBUS on ARM.
 static inline uint64_t _hash_load64(const char *p)
 {
     uint64_t v;

@@ -1,14 +1,5 @@
-/**
- * musicPlayer - a native music player for Onion.
- *
- * Replaces the vendored GMU build (static/packages/App/Music Player (GMU)),
- * which ships a prebuilt binary plus eight decoder .so files and its own copy of
- * SDL 1.2. This links the system SDL_mixer instead, which on this device is built
- * against libmad and therefore decodes MP3 with nothing extra bundled.
- *
- * Two views: a library list and a Now Playing screen. Scope is MP3 only; see
- * library.h for why.
- */
+// OnionMusic: a library list and a Now Playing screen, MP3 only. Replaces the
+// vendored GMU build by linking the system SDL_mixer. See README.md.
 
 #include <signal.h>
 #include <stdbool.h>
@@ -48,7 +39,7 @@ static void sigHandler(int sig)
     }
 }
 
-/** Shows the current track in the list's sticky note. */
+// Shows the current track in the list's sticky note.
 static void updateNowPlayingNote(List *list, bool has_tracks)
 {
     if (!has_tracks || !list->has_sticky)
@@ -62,8 +53,7 @@ static void updateNowPlayingNote(List *list, bool has_tracks)
         return;
     }
 
-    // Sized to hold the longest possible label plus the state prefix, so the
-    // compiler can see the format can't overflow.
+    // Sized so the compiler can see the format cannot overflow.
     char note[STR_MAX + 8];
     snprintf(note, sizeof(note), "%s %s", player_isPaused() ? "||" : ">",
              tracks[index].label);
@@ -77,22 +67,17 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
 
-    // SDL_InitDefault() returns false when Mix_OpenAudio fails, which is what a
-    // missing or busy audio device looks like. Carry on regardless -- the UI is
-    // still usable and showing it beats a black screen -- but say so, because
-    // silently ignoring this is what made the audioserver bug so opaque.
+    // False when Mix_OpenAudio fails; carry on, since a usable UI beats a blank screen.
     bool audio_ok = SDL_InitDefault();
     if (!audio_ok)
         printf_debug("Audio init failed: %s. Playback will not work.\n",
                      Mix_GetError());
 
-    // settings_load() must precede lang_load(): the language file is named by
-    // settings.language.
+    // settings_load() first: it names the language file lang_load() reads.
     settings_load();
     lang_load();
 
-    // MainUI passes the file path as $1 when launching from a registered system,
-    // which is how a single track can appear in Recents and the Game Switcher.
+    // MainUI passes the track path as $1 for entries launched from a system.
     const char *start_path = (argc > 1) ? argv[1] : NULL;
     char scan_dir[STR_MAX * 2];
     library_resolveScanDir(start_path, scan_dir, sizeof(scan_dir));
@@ -107,8 +92,7 @@ int main(int argc, char *argv[])
 
     View view = VIEW_LIBRARY;
 
-    // Launched with a track: start it and open on Now Playing, so resuming from
-    // Recents picks up what was being listened to rather than showing a menu.
+    // Launched with a track: play it and open Now Playing, so Recents resumes it.
     if (start_path != NULL) {
         int start_index = library_indexOfPath(start_path);
         if (start_index >= 0) {
@@ -210,18 +194,14 @@ int main(int argc, char *argv[])
         if (acc_ticks < time_step)
             continue;
 
-        // Durations require reading every file to count frames, which is too
-        // slow to do before the first frame is drawn. Do it once, after the UI
-        // is already on screen.
+        // Reads every file to count frames, so do it once the UI is on screen.
         if (!durations_loaded && has_tracks) {
             library_loadDurations();
             durations_loaded = true;
             redraw = true;
         }
 
-        // Auto-advance. SDL_mixer 1.2 has Mix_HookMusicFinished, but that
-        // callback runs on the audio thread where calling back into Mix_* is
-        // unsafe, so the end of a track is detected by polling instead.
+        // Polled, not Mix_HookMusicFinished: that fires on the audio thread.
         if (player_currentIndex() >= 0 && !player_isPaused() &&
             !player_isPlaying()) {
             player_next(false);
@@ -229,8 +209,7 @@ int main(int argc, char *argv[])
             redraw = true;
         }
 
-        // The progress bar has to advance on its own, so Now Playing redraws
-        // every frame while a track is running.
+        // Now Playing redraws every frame so the progress bar advances.
         if (view == VIEW_NOW_PLAYING && player_currentIndex() >= 0 &&
             !player_isPaused())
             redraw = true;

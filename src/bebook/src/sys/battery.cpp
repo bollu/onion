@@ -19,7 +19,6 @@ int read_battery_percent()
         return -1;
     }
 
-    // batmon reports 500 while charging. Clamp rather than reject, so a charging
-    // device shows full instead of the indicator vanishing.
+    // batmon reports 500 while charging; clamp so the indicator stays visible.
     return percent > 100 ? 100 : percent;
 }

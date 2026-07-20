@@ -288,9 +288,7 @@ music-player:
 BEBOOK_OUT ?= $(BEBOOK_DEST)
 bebook:
 	@$(ECHO) $(PRINT_RECIPE)
-# PREFIX is set inside the toolchain image and points at the cross sysroot that
-# supplies FreeType. Run bare on the host it is empty, so the copy below would
-# reach for /lib/libfreetype.so.6 and fail with nothing to explain why.
+# PREFIX comes from the toolchain image; bare on the host it is empty.
 	@test -n "$(PREFIX)" || { \
 	    echo "bebook needs the cross toolchain sysroot (PREFIX is unset)."; \
 	    echo "Run it inside the container, e.g.:"; \
@@ -318,38 +316,22 @@ demo-app:
 	@chmod a+x "$(SIDELOAD_DIR)/DemoApp/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 
-# Assembles drop-in App folders under $(SIDELOAD_DIR), ready to copy straight to
-# /mnt/SDCARD/App/ without the Package Manager or a reflash. MainUI finds apps by
-# scanning App/*/config.json (src/common/utils/apps.h), so config.json + launch.sh
-# + the binary is all a folder needs.
-#
-# To get them onto the device: Tweaks > Network > Hotspot and HTTP FS, join the
-# device's own Wi-Fi, browse to it and drop the folder into /App/.
+# Drop-in App folders, copyable straight to /mnt/SDCARD without a reflash. MainUI
+# finds apps by scanning App/*/config.json (src/common/utils/apps.h).
 sideload: music-player demo-app pc-link sideload-bebook sideload-systems
 	@$(ECHO) $(COLOR_BLUE)"\n-- Drop-in app folders ready in $(SIDELOAD_DIR)"$(COLOR_NORMAL)
 	@$(ECHO) $(PRINT_DONE)
 
-# bebook needs more than a binary -- vendored libs, fonts, and an icon and .cfg that
-# live with the package -- so it reuses the `bebook` recipe with the output
-# redirected, rather than duplicating the assembly.
-# The Emu/*/config.json registrations, without which books and tracks are only
-# reachable from the app icon. Registering them as "systems" is what puts individual
-# items in Recents and the Game Switcher: MainUI writes recentlist.json for entries it
-# launches from a registered system, and the Game Switcher only accepts type 5 (game)
-# -- an app launch records type 3 and is discarded (src/gameSwitcher/gs_history.h).
-#
-# Copy SIDELOAD_ROOT/{Emu,Media,Roms} onto the card alongside the App folders.
+# Reuses the `bebook` recipe with the output redirected, rather than duplicating it.
+# The Emu/*/config.json registrations: without them books and tracks reach neither
+# the games list nor Recents, since an app launch records type 3 and is discarded.
 sideload-systems:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p "$(SIDELOAD_ROOT)/Emu" "$(SIDELOAD_ROOT)/Roms" "$(SIDELOAD_ROOT)/Media"
 	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Emu/EBOOK" "$(SIDELOAD_ROOT)/Emu/"
 	@cp -a "$(STATIC_PACKAGES)/Emu/Music (OnionMusic)/Emu/MUSIC" "$(SIDELOAD_ROOT)/Emu/"
-# The Imgs directories come from the packages, .gitkeep included, rather than being
-# mkdir'd. They must exist on the card and must not be empty: bebook's write_box_art()
-# refuses to create Imgs/ itself (an absent one means the book is not in a library
-# MainUI scans), and an empty directory does not survive being copied across by a
-# file manager or an archive. No Imgs/ means no cover, and no GameSwitcher preview
-# either, since that falls back to imgpath.
+# Copied with their .gitkeep, not mkdir'd: bebook will not create Imgs/ itself, and
+# an empty directory does not survive being copied across. No Imgs/ means no covers.
 	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Roms/EBOOK" "$(SIDELOAD_ROOT)/Roms/"
 	@cp -a "$(STATIC_PACKAGES)/Emu/Music (OnionMusic)/Media/Music" "$(SIDELOAD_ROOT)/Media/"
 	@chmod a+x "$(SIDELOAD_ROOT)/Emu/EBOOK/launch.sh" "$(SIDELOAD_ROOT)/Emu/MUSIC/launch.sh"

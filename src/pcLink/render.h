@@ -10,19 +10,12 @@
 
 #include "./sharing.h"
 
-/**
- * Layout constants are multiplied by g_scale, which theme/load.h sets from the
- * device resolution, so the same numbers work on 640x480 and higher-res screens.
- *
- * Font sizes are not what their names suggest: theme/config.h defaults are
- * TITLE 36, HINT 40, LIST 24. HINT is sized for the large footer button hints, so
- * body text uses LIST and headings use TITLE.
- */
-
+// Layout is scaled by g_scale so the same numbers work at any device resolution.
+// Font sizes mislead: TITLE 36, HINT 40, LIST 24, so body text uses LIST.
 #define LINE_HEIGHT 34.0
 #define BODY_LEFT 60.0
 
-/** Clears first: theme backgrounds are RGBA, so blitting alone leaves ghosts. */
+// Clears first: theme backgrounds are RGBA, so blitting alone leaves ghosts.
 static void _renderBackground(SDL_Surface *screen)
 {
     SDL_FillRect(screen, NULL, 0);
@@ -68,7 +61,7 @@ static void _chrome(SDL_Surface *screen, const char *title, const char *btn_a)
     theme_renderHeaderBattery(screen, battery_getPercentage());
 }
 
-/** Idle: explain what this does before touching the user's WiFi. */
+// Idle: explain what this does before touching the user's WiFi.
 void render_idle(SDL_Surface *screen)
 {
     _renderBackground(screen);
@@ -94,7 +87,7 @@ void render_idle(SDL_Surface *screen)
     _chrome(screen, "PCLink", "Start sharing");
 }
 
-/** Starting: per-step progress, because hotspot bring-up takes seconds. */
+// Starting: per-step progress, because hotspot bring-up takes seconds.
 void render_starting(SDL_Surface *screen, SharingStep step)
 {
     _renderBackground(screen);
@@ -112,7 +105,7 @@ void render_starting(SDL_Surface *screen, SharingStep step)
     _chrome(screen, "PCLink", "");
 }
 
-/** Sharing: the screen the user actually reads, so it is the joining instructions. */
+// Sharing: the screen the user actually reads, so it is the joining instructions.
 void render_sharing(SDL_Surface *screen, const char *ssid, const char *ap_pass,
                     const char *address)
 {
@@ -163,7 +156,7 @@ void render_sharing(SDL_Surface *screen, const char *ssid, const char *ap_pass,
     _chrome(screen, "PCLink", "Stop sharing");
 }
 
-/** Stopping: shown while WiFi is being restored, which is not instant. */
+// Stopping: shown while WiFi is being restored, which is not instant.
 void render_stopping(SDL_Surface *screen)
 {
     _renderBackground(screen);
@@ -176,7 +169,7 @@ void render_stopping(SDL_Surface *screen)
     _chrome(screen, "PCLink", "");
 }
 
-/** Error: name the step that failed and where to look. */
+// Error: name the step that failed and where to look.
 void render_error(SDL_Surface *screen, SharingStep step)
 {
     _renderBackground(screen);

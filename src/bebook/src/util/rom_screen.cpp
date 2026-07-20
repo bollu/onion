@@ -2,8 +2,7 @@
 
 #include "screenshot.h"
 
-// Onion's shared hash, via -I../common (see the Makefile).
-#include "utils/hash.h"
+#include "utils/hash.h"   // shared with the Game Switcher, via -I../common
 
 #include <cstdint>
 #include <cstring>
@@ -13,22 +12,10 @@
 namespace
 {
 
-// Where Onion keeps Game Switcher previews. Shipped as part of the Saves layout
-// (static/configs/Saves/CurrentProfile/romScreens), so it is not created here: its
-// absence means this is not a device with that layout, and inventing the directory
-// would just leave litter. Same reasoning as LibraryIndex::write_box_art().
+// Ships with the Saves layout, so not created here: absent means not that device.
 const char *ROM_SCREENS_DIR = "/mnt/SDCARD/Saves/CurrentProfile/romScreens";
 
-/**
- * The hash the Game Switcher names preview files by, from Onion's shared
- * utils/hash.h -- the same function the switcher and keymon use, not a copy, so it
- * cannot drift out of step with them.
- *
- * The wrapper exists for one reason: that implementation reads up to 8 bytes past the
- * string, which its own comment warns about ("Add 8 more bytes to the buffer being
- * hashed"). Passing a std::string's buffer straight in would be an out-of-bounds
- * read, so the input is copied into a zero-padded buffer first.
- */
+// Zero-padded because FNV1A_Pippip_Yurii reads up to 8 bytes past the string.
 uint32_t hash_rom_path(const std::string &input)
 {
     std::vector<char> padded(input.size() + 8, '\0');

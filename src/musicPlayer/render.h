@@ -12,13 +12,9 @@
 #include "./library.h"
 #include "./player.h"
 
-/**
- * All layout constants are multiplied by g_scale, which theme/load.h sets from
- * the device resolution, so the same numbers work on 640x480 and higher-res
- * screens. This mirrors how the theme render headers lay things out.
- */
-
-/** Formats seconds as m:ss, or h:mm:ss past an hour. */
+// Layout is scaled by g_scale so the same numbers work at any device resolution.
+// Font sizes mislead: TITLE 36, HINT 40, LIST 24, so body text uses LIST.
+// Formats seconds as m:ss, or h:mm:ss past an hour.
 static void _formatTime(double seconds, char *out, size_t out_size)
 {
     if (seconds < 0.0)
@@ -35,7 +31,7 @@ static void _formatTime(double seconds, char *out, size_t out_size)
         snprintf(out, out_size, "%d:%02d", mins, secs);
 }
 
-/** Blits `text` centred horizontally at vertical position `y`. */
+// Blits `text` centred horizontally at vertical position `y`.
 static void _blitCentered(SDL_Surface *screen, SDL_Surface *text, int y)
 {
     if (text == NULL)
@@ -44,11 +40,7 @@ static void _blitCentered(SDL_Surface *screen, SDL_Surface *text, int y)
     SDL_BlitSurface(text, NULL, screen, &pos);
 }
 
-/**
- * Renders text centred, truncating with an ellipsis if it would exceed max_width.
- * SDL_ttf has no built-in ellipsis, so the string is trimmed a character at a
- * time until it fits - fine for the handful of labels drawn per frame.
- */
+// Renders text centred, truncating with an ellipsis if it would exceed max_width.
 static void _renderCenteredText(SDL_Surface *screen, TTF_Font *font,
                                 const char *str, SDL_Color color, int y,
                                 int max_width)
@@ -76,13 +68,7 @@ static void _renderCenteredText(SDL_Surface *screen, TTF_Font *font,
         SDL_FreeSurface(text);
 }
 
-/**
- * Draws the progress bar: a track, a filled portion, and a knob.
- *
- * Colours come from the active theme so this matches the rest of the UI. The
- * unfilled portion is the same colour at low alpha, which reads correctly on
- * both light and dark themes without needing a second theme field.
- */
+// Draws the progress bar: a track, a filled portion, and a knob.
 static void _renderProgressBar(SDL_Surface *screen, double elapsed,
                                double duration, int y)
 {
@@ -144,7 +130,7 @@ static void _renderProgressBar(SDL_Surface *screen, double elapsed,
     }
 }
 
-/** Builds the "Shuffle - Repeat all" style status line. */
+// Builds the "Shuffle - Repeat all" style status line.
 static void _modeLabel(char *out, size_t out_size)
 {
     const char *repeat_str = "Repeat off";
@@ -163,20 +149,14 @@ static void _modeLabel(char *out, size_t out_size)
              player_shuffle() ? "Shuffle on" : "Shuffle off", repeat_str);
 }
 
-/**
- * Clears the screen and lays down the theme background.
- *
- * The clear is required: theme backgrounds are RGBA and can be partly
- * transparent, so blitting one over a previous frame alpha-blends rather than
- * covering it, and the old screen ghosts through when switching views.
- */
+// Clears the screen and lays down the theme background.
 static void _renderBackground(SDL_Surface *screen)
 {
     SDL_FillRect(screen, NULL, 0);
     SDL_BlitSurface(theme_background(), NULL, screen, NULL);
 }
 
-/** The Now Playing screen: title, progress bar, times, and mode line. */
+// The Now Playing screen: title, progress bar, times, and mode line.
 void render_nowPlaying(SDL_Surface *screen)
 {
     _renderBackground(screen);
@@ -237,7 +217,7 @@ void render_nowPlaying(SDL_Surface *screen)
     theme_renderHeaderBattery(screen, battery_getPercentage());
 }
 
-/** The library list, with the current track shown in the sticky note. */
+// The library list, with the current track shown in the sticky note.
 void render_library(SDL_Surface *screen, List *list, bool has_tracks)
 {
     _renderBackground(screen);

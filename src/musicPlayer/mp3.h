@@ -8,22 +8,7 @@
 
 #include "utils/log.h"
 
-/**
- * Track duration for MP3 files.
- *
- * SDL_mixer 1.2 cannot report either the duration or the current play position
- * of a Mix_Music, so a progress bar needs the duration computed here and the
- * elapsed time tracked by the caller.
- *
- * Strategy, in order of preference:
- *   1. A Xing/Info/VBRI header, which stores the exact frame count.
- *   2. Walking every frame header and counting.
- *
- * A single-frame CBR extrapolation is deliberately NOT used as a general case:
- * the bundled Onion theme tracks are VBR with no Xing header, and extrapolating
- * from the first frame's bitrate gives ~154s for a 205s file.
- */
-
+// Track duration for MP3 files.
 // [version][bitrate_index], kbps. version: 0 = MPEG1, 1 = MPEG2/2.5. Layer III.
 static const int MP3_BITRATES[2][16] = {
     {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0},
@@ -46,7 +31,7 @@ typedef struct Mp3Frame {
     bool is_mpeg1;
 } Mp3Frame;
 
-/** Parses a 4-byte frame header. Returns false if it isn't a valid Layer III frame. */
+// Parses a 4-byte frame header.
 static bool _mp3_parseHeader(const uint8_t *h, Mp3Frame *out)
 {
     // Sync word: 11 bits set.
@@ -85,7 +70,7 @@ static bool _mp3_parseHeader(const uint8_t *h, Mp3Frame *out)
     return out->length > 4;
 }
 
-/** Returns the byte offset of the audio data, skipping any ID3v2 tag. */
+// Returns the byte offset of the audio data, skipping any ID3v2 tag.
 static long _mp3_skipId3(FILE *fp)
 {
     uint8_t header[10];
@@ -108,10 +93,7 @@ static long _mp3_skipId3(FILE *fp)
     return size + 10;
 }
 
-/**
- * Reads the frame count from a Xing/Info or VBRI header, if present.
- * `frame_start` must be the offset of the first frame. Returns 0 if absent.
- */
+// Reads the frame count from a Xing/Info or VBRI header, if present.
 static uint32_t _mp3_vbrFrameCount(FILE *fp, long frame_start, const Mp3Frame *first)
 {
     uint8_t buf[4];
@@ -157,9 +139,7 @@ static uint32_t _mp3_vbrFrameCount(FILE *fp, long frame_start, const Mp3Frame *f
            ((uint32_t)buf[2] << 8) | (uint32_t)buf[3];
 }
 
-/**
- * Returns the duration of an MP3 in seconds, or 0.0 if it can't be determined.
- */
+// Returns the duration of an MP3 in seconds, or 0.0 if it can't be determined.
 double mp3_getDuration(const char *path)
 {
     FILE *fp = fopen(path, "rb");

@@ -24,12 +24,7 @@ typedef struct Track {
 static Track tracks[MAX_TRACKS];
 static int track_count = 0;
 
-/**
- * The device's SDL_mixer is built with libmad only - no vorbis, no FLAC, no
- * modplug - so MP3 is the only music format that can actually be decoded on
- * hardware. Anything else would load at link time and fail at runtime, so the
- * scan deliberately accepts nothing else.
- */
+// MP3 only: the device's SDL_mixer has libmad and nothing else.
 static bool _isSupported(const char *name)
 {
     const char *ext = file_getExtension(name);
@@ -72,14 +67,7 @@ int library_scan(const char *dir_path)
     return track_count;
 }
 
-/**
- * Works out which folder to browse and which track to start on.
- *
- * With no argument this is just MUSIC_DIR. With one -- which is how MainUI
- * launches an entry from a registered system, passing the file path as $1 -- the
- * track's own folder is browsed instead, so next/previous stay inside the album
- * the user picked rather than jumping across the whole library.
- */
+// A track's own folder when launched with one, so next/prev stay in that album.
 void library_resolveScanDir(const char *start_path, char *scan_dir, size_t size)
 {
     if (start_path == NULL || strlen(start_path) == 0) {
@@ -96,7 +84,7 @@ void library_resolveScanDir(const char *start_path, char *scan_dir, size_t size)
         snprintf(scan_dir, size, "%s", MUSIC_DIR);
 }
 
-/** Index of `path` in the scanned library, or -1 if it isn't there. */
+// Index of `path` in the scanned library, or -1 if it isn't there.
 int library_indexOfPath(const char *path)
 {
     for (int i = 0; i < track_count; i++) {
@@ -106,13 +94,7 @@ int library_indexOfPath(const char *path)
     return -1;
 }
 
-/**
- * Computes durations for every track.
- *
- * Kept separate from library_scan() because it reads each file end to end to
- * count frames (see mp3.h), which is far too slow to do while the user waits on
- * an empty screen. The caller runs this after the first frame is drawn.
- */
+// Separate from the scan: reads every file end to end, so run it after first draw.
 void library_loadDurations(void)
 {
     for (int i = 0; i < track_count; i++) {
@@ -121,7 +103,7 @@ void library_loadDurations(void)
     }
 }
 
-/** Fills `list` with one ACTION item per track; payload_ptr points at the Track. */
+// Fills `list` with one ACTION item per track.
 void library_toList(List *list)
 {
     for (int i = 0; i < track_count; i++) {
