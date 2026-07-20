@@ -92,6 +92,21 @@ is the same fix GMU needed in #1749 (commit `1975e9c0`). What is left:
 - [ ] **No album art**, though `mp3.h` already locates the ID3v2 tag (`APIC` frame).
 - [ ] **No resume-on-launch.** Playback position is not persisted across runs.
 
+## bebook: show the battery level
+
+- [ ] **bebook does not show the battery anywhere.** OnionMusic and PCLink already do,
+      via `theme_renderHeaderBattery()` from the shared theme renderer, but bebook
+      builds standalone and draws its own chrome, so it gets nothing.
+      Reading the level is easy and needs no new hardware access: Onion's `batmon`
+      daemon keeps the current percentage as a plain integer in **`/tmp/percBat`**,
+      which is all `battery_getPercentage()` (`src/common/system/battery.h:20`) reads.
+      A few lines in bebook can read the same file. Fall back gracefully when it is
+      absent — that is the normal case off-device, and it also means `batmon` is not
+      running, so there is nothing to show rather than an error.
+      Worth deciding where it goes: a reader wants an uninterrupted page, so the
+      status bar rather than the page area, and probably only when the bottom bar is
+      already visible.
+
 ## bebook: integration with Recents / Game Switcher
 
 - [ ] **Show the current page in the Game Switcher, not just a cover.** The switcher
