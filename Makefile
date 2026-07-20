@@ -341,9 +341,17 @@ sideload: music-player demo-app pc-link sideload-bebook sideload-systems
 # Copy SIDELOAD_ROOT/{Emu,Media,Roms} onto the card alongside the App folders.
 sideload-systems:
 	@$(ECHO) $(PRINT_RECIPE)
-	@mkdir -p "$(SIDELOAD_ROOT)/Emu" "$(SIDELOAD_ROOT)/Roms/EBOOK/Imgs" "$(SIDELOAD_ROOT)/Media/Music/Imgs"
+	@mkdir -p "$(SIDELOAD_ROOT)/Emu" "$(SIDELOAD_ROOT)/Roms" "$(SIDELOAD_ROOT)/Media"
 	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Emu/EBOOK" "$(SIDELOAD_ROOT)/Emu/"
 	@cp -a "$(STATIC_PACKAGES)/Emu/Music (OnionMusic)/Emu/MUSIC" "$(SIDELOAD_ROOT)/Emu/"
+# The Imgs directories come from the packages, .gitkeep included, rather than being
+# mkdir'd. They must exist on the card and must not be empty: bebook's write_box_art()
+# refuses to create Imgs/ itself (an absent one means the book is not in a library
+# MainUI scans), and an empty directory does not survive being copied across by a
+# file manager or an archive. No Imgs/ means no cover, and no GameSwitcher preview
+# either, since that falls back to imgpath.
+	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Roms/EBOOK" "$(SIDELOAD_ROOT)/Roms/"
+	@cp -a "$(STATIC_PACKAGES)/Emu/Music (OnionMusic)/Media/Music" "$(SIDELOAD_ROOT)/Media/"
 	@chmod a+x "$(SIDELOAD_ROOT)/Emu/EBOOK/launch.sh" "$(SIDELOAD_ROOT)/Emu/MUSIC/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 

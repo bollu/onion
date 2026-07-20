@@ -92,6 +92,26 @@ is the same fix GMU needed in #1749 (commit `1975e9c0`). What is left:
 - [ ] **No album art**, though `mp3.h` already locates the ID3v2 tag (`APIC` frame).
 - [ ] **No resume-on-launch.** Playback position is not persisted across runs.
 
+## bebook: integration with Recents / Game Switcher
+
+- [ ] **Show the current page in the Game Switcher, not just a cover.** The switcher
+      first looks for `Saves/CurrentProfile/romScreens/<hash>.png`, where `<hash>` is
+      `FNV1A_Pippip_Yurii(rompath)` (`gs_romscreen.h:46`), and only falls back to
+      `imgpath` when that is absent — which is why a book shows a cover at best and
+      nothing at worst. bebook could write the page it was on to that path when it
+      exits, and the switcher would show exactly where the reader is.
+      Most of the parts exist: `src/util/screenshot.h` already writes a surface out
+      as PNG for the `BEBOOK_SCREENSHOT` hook, and the book path arrives as `argv[1]`.
+      What is needed is the hash, which is 14 lines in `src/common/utils/hash.h` and
+      would have to be ported into bebook's tree (separate build, no shared headers).
+      **Careful:** that hash reads 8 bytes past the string — its own comment says to
+      allocate `len + 8`. Hashing a `std::string`'s buffer directly is an
+      out-of-bounds read.
+- [ ] **Covers depend on `Roms/EBOOK/Imgs/` already existing.** `write_box_art()`
+      deliberately will not create it, treating an absent directory as "this book is
+      not in a library MainUI scans". Worth surfacing somewhere the user can see —
+      right now a missing directory silently means no cover art anywhere.
+
 ## Shared code
 
 - [ ] **`infoPanel.c:97` blits the theme background without clearing first.** Theme
