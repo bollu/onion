@@ -123,7 +123,7 @@ hotspot has only ever run inside netplay, which defines `log`/`cleanup` helpers
 first; the scripts fall back to `echo` without them, but this path is untested
 standalone.
 
-Then: `make with-toolchain CMD=pc-link`, copy `build/sideload/App/PCLink/` to
+Then: `make with-toolchain CMD=pc-link`, copy `sideload/App/PCLink/` to
 `/mnt/SDCARD/App/PCLink/`, run it, mount from the Mac, and exit via **MENU** —
 confirming Wi-Fi comes back. Also kill it mid-share to exercise the signal handler.
 

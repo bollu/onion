@@ -4,6 +4,7 @@ local.mk
 *.o
 /src/**/*.log
 /build/
+/sideload/
 /build_test/
 /release/
 /dist/

@@ -44,7 +44,9 @@ PACKAGES_APP_DEST   := $(PACKAGES_DIR)/App
 PACKAGES_RAPP_DEST  := $(PACKAGES_DIR)/RApp
 BEBOOK_DEST         := $(PACKAGES_APP_DEST)/BeBook/App/BeBook
 # Drop-in app folders assembled by `sideload`, copyable straight to the SD card.
-SIDELOAD_DIR        := $(BUILD_DIR)/sideload/App
+# Deliberately outside BUILD_DIR so `make clean` does not delete the folders you
+# are in the middle of copying onto a device.
+SIDELOAD_DIR        := $(ROOT_DIR)/sideload/App
 # Sysroot library directory inside the toolchain container, where bebook picks up the
 # FreeType it links against.
 PREFIX_LIB          := $(PREFIX)/lib

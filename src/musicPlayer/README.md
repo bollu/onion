@@ -43,7 +43,7 @@ For a quick iteration loop that skips the rest of the release build:
 make with-toolchain CMD=music-player
 ```
 
-Output in `build/sideload/App/MusicPlayer/`. Copy that folder to `/mnt/SDCARD/App/MusicPlayer/`
+Output in `sideload/App/MusicPlayer/`. Copy that folder to `/mnt/SDCARD/App/MusicPlayer/`
 to try it without reflashing.
 
 The sample tracks that used to live in the GMU package moved to
