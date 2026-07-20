@@ -34,16 +34,14 @@ what would block a release.
       wrong place. Untested — there is no position query to check it against.
       Also check whether a backwards seek re-decodes from the start, which would
       stall audibly on a long track.
-- [ ] **Elapsed time is wall-clock, not the audio clock.** `player_elapsed()` uses
-      `SDL_GetTicks()`. Known error sources, worst first:
-      - Pause/resume quantization. `Mix_PauseMusic()` acts on a buffer boundary but
-        the clock is frozen at the call, so every pause cycle adds a small error
-        that never washes out. This is the one that accumulates.
-      - A constant ~85 ms lead: the clock starts at `Mix_PlayMusic()`, but the
-        4096-sample buffer at 48 kHz has to fill before sound reaches the speaker.
-      - Track-end polling at 30 fps, so up to 33 ms late.
-      - Oscillator mismatch between wall and audio clocks (~50-100 ppm), negligible
-        here because the clock resets each track.
+- [x] **Elapsed time now comes from the audio clock.** SDL_mixer 1.2 has no
+      `Mix_GetMusicPosition`, so `audio.h` counts bytes handed to the device in a
+      `Mix_SetPostMix` hook — the real clock, not an estimate. Pausing needs no
+      correction: measured +0.00s drift across a one-second pause, where the old
+      wall-clock version accumulated error on every pause cycle.
+      Still to confirm on hardware: under qemu's dummy audio driver the counter runs
+      ~7.5% slow against wall time, which is the driver not pacing at real time rather
+      than the shim, but only a device can prove that.
 - [ ] **Check the volume keys.** `launch.sh` no longer kills audioserver, so the
       normal volume path should apply — but that has not been observed.
 - [ ] **Confirm resampling quality.** `SDL_InitDefault()` opens the device at

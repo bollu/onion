@@ -69,9 +69,12 @@ Adopted from MiyooPod's `src/audio.c`, which is SDL_mixer too:
   suits UI blips, so `audio_init()` reopens it at 8192. MiyooPod uses 524288, which is
   not copied: `SDL_AudioSpec.samples` is a `Uint16`, so that cannot mean frames.
 - **`Mix_HookMusicFinished` sets a flag**, replacing the end-of-track poll.
+- **Position comes from a post-mix byte counter.** SDL2's `Mix_GetMusicPosition` has no
+  1.2 equivalent, but `Mix_SetPostMix` sees every byte on its way to the device, so
+  counting them gives the true audio clock. `Mix_QuerySpec` supplies the byte rate.
+  Pausing then needs no correction — measured +0.00s across a one-second pause.
 
-Not adopted: `Mix_MusicDuration` and `Mix_GetMusicPosition` are SDL2-only, which is why
-`mp3.h` and the elapsed clock exist.
+`Mix_MusicDuration` has no 1.2 equivalent either, which is why `mp3.h` exists.
 
 ### Compared with MiyooPod
 

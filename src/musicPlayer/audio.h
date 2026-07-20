@@ -2,6 +2,7 @@
 #define MUSICPLAYER_AUDIO_H__
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -28,7 +29,21 @@ static Mix_Music *_audio_music = NULL;
 static void *_audio_data = NULL;
 static volatile int _audio_finished = 0;
 
+// SDL_mixer 1.2 has no Mix_GetMusicPosition, so the position is measured by counting
+// bytes handed to the device in the post-mix hook -- the real audio clock, not a guess.
+static volatile uint32_t _audio_bytes = 0;
+static volatile int _audio_counting = 0;
+static int _audio_bytes_per_sec = 0;
+
 static void _audio_onFinished(void) { _audio_finished = 1; }
+
+static void _audio_postMix(void *udata, Uint8 *stream, int len)
+{
+    (void)udata;
+    (void)stream;
+    if (_audio_counting)
+        _audio_bytes += (uint32_t)len;
+}
 
 static inline const char *audio_error(void) { return Mix_GetError(); }
 
@@ -42,6 +57,14 @@ static inline bool audio_init(void)
         return false;
     }
     Mix_HookMusicFinished(_audio_onFinished);
+
+    int freq = 0, channels = 0;
+    Uint16 fmt = 0;
+    if (Mix_QuerySpec(&freq, &fmt, &channels))
+        _audio_bytes_per_sec = freq * channels * ((fmt & 0xFF) / 8);
+    if (_audio_bytes_per_sec > 0)
+        Mix_SetPostMix(_audio_postMix, NULL);
+
     return true;
 }
 
@@ -55,6 +78,8 @@ static inline void audio_stop(void)
     free(_audio_data);
     _audio_data = NULL;
     _audio_finished = 0;
+    _audio_counting = 0;
+    _audio_bytes = 0;
 }
 
 // Reads the track into memory so playback does no SD I/O, which is what starves the
@@ -99,6 +124,8 @@ static inline bool audio_play(void)
     if (_audio_music == NULL)
         return false;
     _audio_finished = 0;
+    _audio_bytes = 0;
+    _audio_counting = 1;
     if (Mix_PlayMusic(_audio_music, 1) != -1)
         return true;
     audio_stop();
@@ -119,9 +146,34 @@ static inline bool audio_takeFinished(void)
     return true;
 }
 
-static inline void audio_pause(void) { Mix_PauseMusic(); }
-static inline void audio_resume(void) { Mix_ResumeMusic(); }
-static inline bool audio_seek(double sec) { return Mix_SetMusicPosition(sec) == 0; }
+static inline void audio_pause(void)
+{
+    _audio_counting = 0;
+    Mix_PauseMusic();
+}
+
+static inline void audio_resume(void)
+{
+    Mix_ResumeMusic();
+    _audio_counting = 1;
+}
+
+static inline bool audio_seek(double sec)
+{
+    if (Mix_SetMusicPosition(sec) != 0)
+        return false;
+    _audio_bytes = (uint32_t)(sec * _audio_bytes_per_sec);
+    return true;
+}
+
+// Seconds played, or -1 when the device spec is unknown and the caller must estimate.
+// Leads the speaker by one device buffer, which at 8192 frames is under 0.2s.
+static inline double audio_position(void)
+{
+    if (_audio_bytes_per_sec <= 0)
+        return -1.0;
+    return (double)_audio_bytes / _audio_bytes_per_sec;
+}
 static inline void audio_close(void) { Mix_CloseAudio(); }
 
 #else // NO_AUDIO
@@ -150,6 +202,7 @@ static inline void audio_pause(void) {}
 static inline void audio_resume(void) {}
 static inline bool audio_seek(double sec) { (void)sec; return true; }
 static inline void audio_close(void) {}
+static inline double audio_position(void) { return -1.0; }
 
 // Driven by player_elapsed() passing the track duration.
 static inline void audio_markFinished(void)

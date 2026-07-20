@@ -42,10 +42,16 @@ double player_elapsed(void)
 {
     if (_current_index < 0)
         return 0.0;
-    if (_paused)
-        return _base_offset;
 
-    double elapsed = _base_offset + (SDL_GetTicks() - _play_start_ticks) / 1000.0;
+    // The audio clock when there is one: it cannot drift, and it stops exactly when
+    // playback does, so pausing needs no correction. Falls back to wall time.
+    double measured = audio_position();
+    double elapsed = measured >= 0.0
+                         ? measured
+                         : _base_offset + (SDL_GetTicks() - _play_start_ticks) / 1000.0;
+
+    if (_paused && measured < 0.0)
+        return _base_offset;
 
     // Don't run past the end before the main loop's poll notices.
     if (_duration > 0.0 && elapsed > _duration) {
