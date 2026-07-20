@@ -330,6 +330,10 @@ int main(int argc, char **argv)
     const char *screenshot_path = SDL_getenv("BEBOOK_SCREENSHOT");
     uint32_t screenshot_frames_left = screenshot_path ? 40 : 0;
 
+    // Frames between cover-indexing steps, so the hitch is spread out.
+    static const int COVER_INDEX_INTERVAL = 30;
+    int frames_since_index = 0;
+
     while (!quit)
     {
         if (screenshot_path && screenshot_frames_left-- == 0)
@@ -354,6 +358,20 @@ int main(int argc, char **argv)
                 std::cerr << "Failed to write " << screenshot_path << std::endl;
             }
             break;
+        }
+
+        // Cover art for books never opened. index_one() opens a zip and drain() runs it
+        // on this thread, so one book every COVER_INDEX_INTERVAL frames rather than the
+        // whole library at once -- the shelf paced it the same way before it went.
+        if (++frames_since_index >= COVER_INDEX_INTERVAL)
+        {
+            frames_since_index = 0;
+            const auto stale = library.stale_paths();
+            if (!stale.empty())
+            {
+                const auto path = stale.front();
+                task_queue.submit([&library, path]() { library.index_one(path); });
+            }
         }
 
         bool ran_user_code = task_queue.drain();
