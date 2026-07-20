@@ -66,9 +66,23 @@ is the same fix GMU needed in #1749 (commit `1975e9c0`). What is left:
       frame is drawn. `mp3.h` walks every frame header of every file, so a large
       library on a slow SD card will stall the UI. Make it lazy per-track or move it
       to a background thread.
-- [ ] **Flat directory scan.** No recursion into subfolders. GMU also read `.m3u`
-      and `.pls` playlists.
-- [ ] **No album art**, though `mp3.h` already locates the ID3v2 tag.
+- [ ] **Browse albums as folders.** *Wanted most.* `library_scan()` skips
+      subdirectories outright (`if (ep->d_type == DT_DIR ... ) continue`), so a
+      folder of albums dropped into `Media/Music` shows an empty library — the
+      failure is silent and looks like the app is broken. Treat each subfolder as an
+      album: a top level listing folders, drilling into the tracks inside. Loose
+      files directly in `Media/Music` should still work. Worth doing before tag
+      reading, since folder names already carry the grouping most libraries have,
+      and it needs no new parsing.
+- [ ] **Read ID3 tags for title/artist/album.** Currently the track name is just the
+      filename with the extension stripped, so listings are only as good as the file
+      names. `mp3.h` already finds and sizes the ID3v2 tag in `_mp3_skipId3()`, so
+      this is parsing frames (`TIT2`, `TPE1`, `TALB`) inside a region already
+      located, not starting from scratch. Fall back to the filename when a tag is
+      absent or empty. Note ID3v2 text frames carry an encoding byte and may be
+      UTF-16 — decoding to UTF-8 matters, as SDL_ttf renders UTF-8.
+- [ ] **No `.m3u`/`.pls` playlists.** GMU read both.
+- [ ] **No album art**, though `mp3.h` already locates the ID3v2 tag (`APIC` frame).
 - [ ] **No resume-on-launch.** Playback position is not persisted across runs.
 
 ## Shared code

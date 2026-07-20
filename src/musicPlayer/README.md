@@ -150,8 +150,14 @@ the conventional behaviour.
 - **Now Playing redraws every frame** while a track runs, because the progress bar
   has to advance. The library view only redraws on change. If battery life
   matters, the bar could be redrawn once a second instead.
-- **Flat directory scan.** No recursion into subfolders, no playlists. GMU reads
-  `.m3u` and `.pls`.
+- **Flat directory scan — no albums.** `library_scan()` skips subdirectories
+  outright, so files must sit directly in `Media/Music/`. Drop in a folder of
+  albums and the library comes up empty, with nothing on screen explaining why.
+  Browsing folders as albums is the most wanted improvement; see `TODO.md`.
+- **Track names are filenames.** No ID3 tags are read, so a listing is only as tidy
+  as the file names. `mp3.h` already locates the ID3v2 tag, so reading
+  `TIT2`/`TPE1`/`TALB` is incremental work rather than a new parser.
+- **No playlists.** GMU reads `.m3u` and `.pls`.
 - **Durations are computed for the whole library at startup**, after the first
   frame is drawn. With a large library on a slow SD card this will stall the UI
   briefly; it should move to a background thread or become lazy per-track.
