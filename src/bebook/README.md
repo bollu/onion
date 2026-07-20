@@ -3,9 +3,13 @@
 A typographically serious ebook reader for the Miyoo Mini. Supports epub and txt formats.
 
 Forked from [Pixel Reader](https://github.com/ealang/pixel-reader) by ealang, and licensed
-under the same terms (GPL-3.0). bebook adds a cover-art library view, real text shaping and
-layout (FreeType + HarfBuzz, Knuth–Plass line breaking, hyphenation, italics/bold), and
-OnionOS Recents integration.
+under the same terms (GPL-3.0). bebook adds real text shaping and layout (FreeType +
+HarfBuzz, Knuth–Plass line breaking, hyphenation, italics/bold), cover art in the game
+list, and OnionOS Recents integration.
+
+Books are opened as games from the OnionOS game list rather than through a shelf of their
+own: MainUI passes the book path, and bebook writes the cover art and reading progress
+that MainUI shows.
 
 ![Screenshot](resources/demo.gif)
 

@@ -319,6 +319,30 @@ void LibraryIndex::index_one(const std::filesystem::path &path)
     dirty = true;
 }
 
+std::filesystem::path LibraryIndex::box_art_path(const std::filesystem::path &path) const
+{
+    return path.parent_path() / "Imgs" / (path.stem().string() + ".png");
+}
+
+std::vector<std::filesystem::path> LibraryIndex::paths_missing_box_art() const
+{
+    std::vector<std::filesystem::path> missing;
+    for (const auto &entry: library_entries)
+    {
+        std::error_code ec;
+        if (!std::filesystem::exists(box_art_path(entry.path), ec))
+        {
+            missing.push_back(entry.path);
+        }
+    }
+    return missing;
+}
+
+void LibraryIndex::ensure_box_art(const std::filesystem::path &path) const
+{
+    write_box_art(path);
+}
+
 void LibraryIndex::write_box_art(const std::filesystem::path &path) const
 {
     // MainUI draws its own game lists -- including Recents -- from
@@ -329,7 +353,7 @@ void LibraryIndex::write_box_art(const std::filesystem::path &path) const
     // Written only when absent: the file is the user's to replace, and a scraped or
     // hand-made cover should survive re-indexing.
     const std::filesystem::path imgs_dir = path.parent_path() / "Imgs";
-    const std::filesystem::path art = imgs_dir / (path.stem().string() + ".png");
+    const std::filesystem::path art = box_art_path(path);
 
     std::error_code ec;
     if (std::filesystem::exists(art, ec))

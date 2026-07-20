@@ -38,6 +38,9 @@ class LibraryIndex
     // launched as OnionOS "roms" show art in the game list and in Recents.
     void write_box_art(const std::filesystem::path &path) const;
 
+    // Where write_box_art() would put the cover for this book.
+    std::filesystem::path box_art_path(const std::filesystem::path &path) const;
+
 public:
     LibraryIndex(StateStore &store, std::filesystem::path books_dir);
     LibraryIndex(const LibraryIndex &) = delete;
@@ -49,6 +52,13 @@ public:
 
     // Returns paths needing (re)indexing: new files, or size/mtime changed.
     std::vector<std::filesystem::path> stale_paths() const;
+
+    // Indexed books whose MainUI cover is missing. Staleness alone misses these: a book
+    // indexed by a build that predated box art is never stale, so it never gets one.
+    std::vector<std::filesystem::path> paths_missing_box_art() const;
+
+    // Extracts just the cover, without reparsing the book the way index_one() does.
+    void ensure_box_art(const std::filesystem::path &path) const;
 
     // Opens ONE book, extracts metadata + cover, updates the entry. Slow; call off the
     // render thread.

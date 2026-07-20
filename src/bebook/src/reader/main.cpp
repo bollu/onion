@@ -7,8 +7,7 @@
 #include "./color_theme_def.h"
 #include "./view_stack.h"
 #include "./library_index.h"
-#include "./views/file_selector.h"
-#include "./views/library_view.h"
+#include "./views/popup_view.h"
 #include "./views/reader_bootstrap_view.h"
 #include "./views/settings_view.h"
 #include "./views/token_view/token_view_styling.h"
@@ -30,9 +29,19 @@
 
 #include <csignal>
 #include <iostream>
+#include <set>
 
 namespace
 {
+
+// The book being read and how far into it, recorded into the library at shutdown.
+// Tracked here rather than from the launch argument so a resumed book
+// records progress too.
+struct OpenedBook
+{
+    std::filesystem::path path;
+    int progress_percent = -1;   // -1 until the reader reports one
+};
 
 void initialize_views(
     ViewStack &view_stack,
@@ -41,22 +50,28 @@ void initialize_views(
     TokenViewStyling &token_view_styling,
     TaskQueue &task_queue,
     LibraryIndex &library,
-    std::optional<std::filesystem::path> requested_book_path
+    std::optional<std::filesystem::path> requested_book_path,
+    // Owned by main(), which records it into the library at shutdown.
+    OpenedBook &opened
 )
 {
-    auto load_book = [&view_stack, &state_store, &sys_styling, &token_view_styling, &task_queue, &library](std::filesystem::path path) {
+    auto load_book = [&view_stack, &state_store, &sys_styling, &token_view_styling, &task_queue, &library, &opened](std::filesystem::path path) {
+        // Say so on screen: with no shelf to fall back to, a bare return is a black flash.
         if (!std::filesystem::exists(path))
         {
             std::cerr << path << " does not exist" << std::endl;
+            view_stack.push(std::make_shared<PopupView>("File not found", SYSTEM_FONT, sys_styling));
             return;
         }
         if (!file_type_is_supported(path))
         {
             std::cerr << path << " filetype is not supported" << std::endl;
+            view_stack.push(std::make_shared<PopupView>("Unsupported file", SYSTEM_FONT, sys_styling));
             return;
         }
 
         library.note_opened(path, 0);
+        opened.path = path;
 
         view_stack.push(
             std::make_shared<ReaderBootstrapView>(
@@ -65,51 +80,25 @@ void initialize_views(
                 token_view_styling,
                 view_stack,
                 state_store,
-                [&task_queue](task_func task){ task_queue.submit(task); }
+                [&task_queue](task_func task){ task_queue.submit(task); },
+                [&opened](int percent){ opened.progress_percent = percent; }
             )
         );
     };
 
+    // Books are opened as games: MainUI passes the path. Without one, resume the last
+    // book so the app is never a dead end.
     if (requested_book_path)
     {
         load_book(*requested_book_path);
     }
+    else if (state_store.get_current_book_path())
+    {
+        load_book(*state_store.get_current_book_path());
+    }
     else
     {
-        // The file browser is kept, but behind the library: it remains the only way to
-        // reach a book outside the library directory.
-        auto push_file_browser = [&view_stack, &state_store, &sys_styling, load_book]() {
-            auto browse_path = state_store.get_current_browse_path().value_or(DEFAULT_BROWSE_PATH);
-            std::shared_ptr<FileSelector> fs = std::make_shared<FileSelector>(
-                browse_path,
-                sys_styling
-            );
-
-            fs->set_on_file_selected(load_book);
-            fs->set_on_file_focus([&state_store](std::string path) {
-                state_store.set_current_browse_path(path);
-            });
-            fs->set_on_view_focus([&state_store]() {
-                state_store.remove_current_book_path();
-            });
-
-            view_stack.push(fs);
-        };
-
-        std::shared_ptr<LibraryView> library_view = std::make_shared<LibraryView>(
-            library,
-            sys_styling,
-            [&task_queue](task_func task){ task_queue.submit(task); }
-        );
-        library_view->set_on_book_selected(load_book);
-        library_view->set_on_browse_requested(push_file_browser);
-
-        view_stack.push(library_view);
-
-        if (state_store.get_current_book_path())
-        {
-            load_book(state_store.get_current_book_path().value());
-        }
+        view_stack.push(std::make_shared<PopupView>("No book selected", SYSTEM_FONT, sys_styling));
     }
 }
 
@@ -278,6 +267,8 @@ int main(int argc, char **argv)
         : std::filesystem::path(DEFAULT_BROWSE_PATH);
     LibraryIndex library(state_store, books_path);
 
+    OpenedBook opened;
+
     initialize_views(
         view_stack,
         state_store,
@@ -285,7 +276,8 @@ int main(int argc, char **argv)
         token_view_styling,
         task_queue,
         library,
-        requested_book_path
+        requested_book_path,
+        opened
     );
     quit = view_stack.is_done();
 
@@ -333,6 +325,7 @@ int main(int argc, char **argv)
     // Frames between cover-indexing steps, so the hitch is spread out.
     static const int COVER_INDEX_INTERVAL = 30;
     int frames_since_index = 0;
+    std::set<std::filesystem::path> box_art_attempted;
 
     while (!quit)
     {
@@ -371,6 +364,20 @@ int main(int argc, char **argv)
             {
                 const auto path = stale.front();
                 task_queue.submit([&library, path]() { library.index_one(path); });
+            }
+            else
+            {
+                // Books already in the index are never stale, so a library indexed by a
+                // build without box art would stay coverless. Attempt each once per run:
+                // a book with no cover inside would otherwise be retried forever.
+                for (const auto &path: library.paths_missing_box_art())
+                {
+                    if (box_art_attempted.insert(path).second)
+                    {
+                        task_queue.submit([&library, path]() { library.ensure_box_art(path); });
+                        break;
+                    }
+                }
             }
         }
 
@@ -462,6 +469,12 @@ int main(int argc, char **argv)
     }
 
     view_stack.shutdown();
+
+    // Once here rather than per page turn: note_opened() scans every entry to stamp this one.
+    if (opened.progress_percent >= 0)
+    {
+        library.note_opened(opened.path, opened.progress_percent);
+    }
     library.flush();
     state_store.flush();
 

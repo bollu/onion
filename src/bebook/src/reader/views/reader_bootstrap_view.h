@@ -28,7 +28,9 @@ public:
         TokenViewStyling &token_view_styling,
         ViewStack &view_stack,
         StateStore &state_store,
-        std::function<void(std::function<void()>)> async
+        std::function<void(std::function<void()>)> async,
+        // Called on the main thread with the reading position, 0-100.
+        std::function<void(int)> on_progress = {}
     );
     virtual ~ReaderBootstrapView();
 
