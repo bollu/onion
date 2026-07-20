@@ -70,7 +70,7 @@ static void updateNowPlayingNote(List *list, bool has_tracks)
     list_updateStickyNote(sticky, note);
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
     log_setName("musicPlayer");
 
@@ -84,16 +84,37 @@ int main(void)
     settings_load();
     lang_load();
 
-    int found = library_scan(MUSIC_DIR);
-    bool has_tracks = found > 0;
-    printf_debug("Found %d track(s) in %s\n", found, MUSIC_DIR);
+    // MainUI passes the file path as $1 when launching from a registered system,
+    // which is how a single track can appear in Recents and the Game Switcher.
+    const char *start_path = (argc > 1) ? argv[1] : NULL;
+    char scan_dir[STR_MAX * 2];
+    library_resolveScanDir(start_path, scan_dir, sizeof(scan_dir));
 
-    List list = list_createWithSticky(has_tracks ? found : 1, "Music Player");
+    int found = library_scan(scan_dir);
+    bool has_tracks = found > 0;
+    printf_debug("Found %d track(s) in %s\n", found, scan_dir);
+
+    List list = list_createWithSticky(has_tracks ? found : 1, "OnionMusic");
     if (has_tracks)
         library_toList(&list);
-    updateNowPlayingNote(&list, has_tracks);
 
     View view = VIEW_LIBRARY;
+
+    // Launched with a track: start it and open on Now Playing, so resuming from
+    // Recents picks up what was being listened to rather than showing a menu.
+    if (start_path != NULL) {
+        int start_index = library_indexOfPath(start_path);
+        if (start_index >= 0) {
+            list_scrollTo(&list, start_index);
+            player_play(start_index);
+            view = VIEW_NOW_PLAYING;
+        }
+        else {
+            printf_debug("Track not found in %s: %s\n", scan_dir, start_path);
+        }
+    }
+
+    updateNowPlayingNote(&list, has_tracks);
     KeyState keystate[320] = {(KeyState)0};
     bool redraw = true;
     bool durations_loaded = false;

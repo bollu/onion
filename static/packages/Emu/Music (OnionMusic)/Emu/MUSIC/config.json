@@ -1,0 +1,13 @@
+{
+"label":"Music",
+"icon":"../../Icons/Default/app/music.png",
+"iconsel":"../../Icons/Default/app/music.png",
+"launch":"launch.sh",
+"rompath":"../../Media/Music",
+"imgpath":"../../Media/Music/Imgs",
+"gamelist":"../../Media/Music/miyoogamelist.xml",
+"useswap":0,
+"shortname":0,
+"hidebios":0,
+"extlist":"mp3"
+}

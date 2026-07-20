@@ -73,6 +73,40 @@ int library_scan(const char *dir_path)
 }
 
 /**
+ * Works out which folder to browse and which track to start on.
+ *
+ * With no argument this is just MUSIC_DIR. With one -- which is how MainUI
+ * launches an entry from a registered system, passing the file path as $1 -- the
+ * track's own folder is browsed instead, so next/previous stay inside the album
+ * the user picked rather than jumping across the whole library.
+ */
+void library_resolveScanDir(const char *start_path, char *scan_dir, size_t size)
+{
+    if (start_path == NULL || strlen(start_path) == 0) {
+        snprintf(scan_dir, size, "%s", MUSIC_DIR);
+        return;
+    }
+
+    snprintf(scan_dir, size, "%s", start_path);
+
+    char *last_slash = strrchr(scan_dir, '/');
+    if (last_slash != NULL && last_slash != scan_dir)
+        *last_slash = '\0';
+    else
+        snprintf(scan_dir, size, "%s", MUSIC_DIR);
+}
+
+/** Index of `path` in the scanned library, or -1 if it isn't there. */
+int library_indexOfPath(const char *path)
+{
+    for (int i = 0; i < track_count; i++) {
+        if (strcmp(tracks[i].path, path) == 0)
+            return i;
+    }
+    return -1;
+}
+
+/**
  * Computes durations for every track.
  *
  * Kept separate from library_scan() because it reads each file end to end to

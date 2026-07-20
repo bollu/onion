@@ -44,7 +44,8 @@ PACKAGES_APP_DEST   := $(PACKAGES_DIR)/App
 PACKAGES_RAPP_DEST  := $(PACKAGES_DIR)/RApp
 BEBOOK_DEST         := $(PACKAGES_APP_DEST)/BeBook/App/BeBook
 # Drop-in app folders assembled by `sideload`, copyable straight to the SD card.
-SIDELOAD_DIR        := $(BUILD_DIR)/sideload/App
+SIDELOAD_ROOT       := $(BUILD_DIR)/sideload
+SIDELOAD_DIR        := $(SIDELOAD_ROOT)/App
 # Sysroot library directory inside the toolchain container, where bebook picks up the
 # FreeType it links against.
 PREFIX_LIB          := $(PREFIX)/lib
@@ -128,7 +129,7 @@ include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external bebook bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link sideload sideload-bebook release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
+.PHONY: all version core apps external bebook bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link sideload sideload-bebook sideload-systems release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
 
 all: dist
 
@@ -324,13 +325,28 @@ demo-app:
 #
 # To get them onto the device: Tweaks > Network > Hotspot and HTTP FS, join the
 # device's own Wi-Fi, browse to it and drop the folder into /App/.
-sideload: music-player demo-app pc-link sideload-bebook
+sideload: music-player demo-app pc-link sideload-bebook sideload-systems
 	@$(ECHO) $(COLOR_BLUE)"\n-- Drop-in app folders ready in $(SIDELOAD_DIR)"$(COLOR_NORMAL)
 	@$(ECHO) $(PRINT_DONE)
 
 # bebook needs more than a binary -- vendored libs, fonts, and an icon and .cfg that
 # live with the package -- so it reuses the `bebook` recipe with the output
 # redirected, rather than duplicating the assembly.
+# The Emu/*/config.json registrations, without which books and tracks are only
+# reachable from the app icon. Registering them as "systems" is what puts individual
+# items in Recents and the Game Switcher: MainUI writes recentlist.json for entries it
+# launches from a registered system, and the Game Switcher only accepts type 5 (game)
+# -- an app launch records type 3 and is discarded (src/gameSwitcher/gs_history.h).
+#
+# Copy SIDELOAD_ROOT/{Emu,Media,Roms} onto the card alongside the App folders.
+sideload-systems:
+	@$(ECHO) $(PRINT_RECIPE)
+	@mkdir -p "$(SIDELOAD_ROOT)/Emu" "$(SIDELOAD_ROOT)/Roms/EBOOK/Imgs" "$(SIDELOAD_ROOT)/Media/Music/Imgs"
+	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Emu/EBOOK" "$(SIDELOAD_ROOT)/Emu/"
+	@cp -a "$(STATIC_PACKAGES)/Emu/Music (OnionMusic)/Emu/MUSIC" "$(SIDELOAD_ROOT)/Emu/"
+	@chmod a+x "$(SIDELOAD_ROOT)/Emu/EBOOK/launch.sh" "$(SIDELOAD_ROOT)/Emu/MUSIC/launch.sh"
+	@$(ECHO) $(PRINT_DONE)
+
 sideload-bebook:
 	@$(ECHO) $(PRINT_RECIPE)
 	@$(MAKE) bebook BEBOOK_OUT="$(SIDELOAD_DIR)/BeBook"
