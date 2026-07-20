@@ -12,7 +12,7 @@
 namespace
 {
 
-// Ships with the Saves layout, so not created here: absent means not that device.
+// Created if absent, as keymon does for RetroArch via file_open_ensure_path().
 const char *ROM_SCREENS_DIR = "/mnt/SDCARD/Saves/CurrentProfile/romScreens";
 
 // Zero-padded because FNV1A_Pippip_Yurii reads up to 8 bytes past the string.
@@ -33,12 +33,20 @@ bool write_rom_screen(const SDL_Surface *surface, const std::filesystem::path &r
     }
 
     std::error_code ec;
-    if (!std::filesystem::is_directory(ROM_SCREENS_DIR, ec))
+    if (!std::filesystem::is_directory(ROM_SCREENS_DIR, ec) &&
+        !std::filesystem::create_directories(ROM_SCREENS_DIR, ec))
     {
         return false;
     }
 
-    const std::string key = rom_path.string();
+    // MainUI records a launcher-prefixed rompath as "launch:rom"; the switcher hashes
+    // what follows the colon, so strip it here too or the name will not match.
+    std::string key = rom_path.string();
+    const auto colon = key.find(':');
+    if (colon != std::string::npos)
+    {
+        key = key.substr(colon + 1);
+    }
     const std::filesystem::path out =
         std::filesystem::path(ROM_SCREENS_DIR) /
         (std::to_string(hash_rom_path(key)) + ".png");

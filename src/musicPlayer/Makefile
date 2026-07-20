@@ -3,7 +3,7 @@ INCLUDE_CJSON=1
 include ../common/config.mk
 
 TARGET = musicPlayer
-LDFLAGS := $(LDFLAGS) -lSDL -lSDL_image -lSDL_ttf -lSDL_rotozoom
+LDFLAGS := $(LDFLAGS) -lSDL -lSDL_image -lSDL_ttf -lSDL_rotozoom -lpng
 
 # NO_AUDIO=1 builds the UI without SDL_mixer, to test rendering on its own.
 # Deliberately not HAS_AUDIO: that would make SDL_InitDefault open the device with a

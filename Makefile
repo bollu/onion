@@ -329,19 +329,16 @@ sideload-systems:
 	@$(ECHO) $(PRINT_RECIPE)
 	@mkdir -p "$(SIDELOAD_ROOT)/Emu" "$(SIDELOAD_ROOT)/Roms" "$(SIDELOAD_ROOT)/Media"
 	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Emu/EBOOK" "$(SIDELOAD_ROOT)/Emu/"
-	@cp -a "$(STATIC_PACKAGES)/Emu/Music (OnionMusic)/Emu/MUSIC" "$(SIDELOAD_ROOT)/Emu/"
 # Copied with their .gitkeep, not mkdir'd: bebook will not create Imgs/ itself, and
 # an empty directory does not survive being copied across. No Imgs/ means no covers.
 	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Roms/EBOOK" "$(SIDELOAD_ROOT)/Roms/"
-	@cp -a "$(STATIC_PACKAGES)/Emu/Music (OnionMusic)/Media/Music" "$(SIDELOAD_ROOT)/Media/"
-	@chmod a+x "$(SIDELOAD_ROOT)/Emu/EBOOK/launch.sh" "$(SIDELOAD_ROOT)/Emu/MUSIC/launch.sh"
+	@chmod a+x "$(SIDELOAD_ROOT)/Emu/EBOOK/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 
 sideload-bebook:
 	@$(ECHO) $(PRINT_RECIPE)
 	@$(MAKE) bebook BEBOOK_OUT="$(SIDELOAD_DIR)/BeBook"
-	@cp "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/config.json" \
-	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/launch.sh" \
+	@cp "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/launch.sh" \
 	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/bebook.cfg" \
 	    "$(SIDELOAD_DIR)/BeBook/"
 	@chmod a+x "$(SIDELOAD_DIR)/BeBook/launch.sh"

@@ -101,7 +101,8 @@ int library_indexOfPath(const char *path)
 // Fills `list` with one ACTION item per track.
 void library_toList(List *list)
 {
-    for (int i = 0; i < track_count; i++) {
+    // list_addItem() writes items[item_count] with no bounds check of its own.
+    for (int i = 0; i < track_count && i < list->item_count + track_count; i++) {
         list_addItem(list, (ListItem){
                                .action_id = i,
                                .item_type = ACTION,

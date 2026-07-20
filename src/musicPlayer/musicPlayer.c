@@ -17,6 +17,7 @@
 
 #include "./library.h"
 #include "./player.h"
+#include "./recents.h"
 #include "./render.h"
 
 #define FRAMES_PER_SECOND 30
@@ -45,7 +46,8 @@ static void updateNowPlayingNote(List *list, bool has_tracks)
     if (!has_tracks || !list->has_sticky)
         return;
 
-    ListItem *sticky = &list->items[0];
+    // The renderer shows the active item's note, not item 0's.
+    ListItem *sticky = &list->items[list->active_pos];
     int index = player_currentIndex();
 
     if (index < 0) {
@@ -231,6 +233,11 @@ int main(int argc, char *argv[])
 
         acc_ticks -= time_step;
     }
+
+    // Before the screen is cleared: this frame becomes the Recents tile.
+    int played = player_currentIndex();
+    if (played >= 0)
+        recents_save(tracks[played].path, tracks[played].label, screen);
 
     SDL_FillRect(video, NULL, 0);
     SDL_Flip(video);
