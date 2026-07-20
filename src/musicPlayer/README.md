@@ -3,12 +3,41 @@
 A native music player, intended to replace the vendored GMU build in
 `static/packages/App/Music Player (GMU)/`.
 
-**Status: feature-complete, untested on hardware.** It compiles warning-free to a
-118 KB ARM binary. MP3 decoding and duration parsing are verified against real
-files under emulation, and both screens have been rendered offscreen at the real
-640x480 with the stock theme (see "Rendering the UI without a device"). What
-remains unproven is anything requiring real hardware: audio output, the volume
-keys with `audioserver` killed, timing drift, and behaviour with the display off.
+**Status: froze to a black screen on hardware; believed fixed, not yet re-tested.**
+
+The cause was `launch.sh` running `stop_audioserver.sh` before starting the app.
+That line was copied from GMU, and it is right for GMU: GMU `LD_PRELOAD`s its own
+SDL and drives `mi_ao` directly, so it needs audioserver out of the way. The same
+is true of the other callers — Drastic, PICO-8, ScummVM, OpenBOR.
+
+This app links the **system** SDL_mixer, whose audio goes *through* audioserver.
+Killing it first leaves `Mix_OpenAudio` with nothing to talk to, and it blocks —
+a freeze, on a black screen, before anything is drawn.
+
+The comparison that isolated it:
+
+| app | `HAS_AUDIO` | kills audioserver | result |
+| --- | --- | --- | --- |
+| demoApp | no | no | works |
+| PCLink | no | no | works |
+| bebook | no (video only) | no | works |
+| **tweaks** | **yes** | **no** | **works** |
+| musicPlayer (before) | yes | yes | black screen |
+
+tweaks is the decisive row: audio via the system SDL is fine, provided audioserver
+is left alone. So the fix is simply not to kill it.
+
+Two things changed alongside, so a future failure is not as opaque:
+
+- `launch.sh` now redirects to `log.txt`. Before, `./musicPlayer` ran with no
+  redirect and anything it printed went nowhere.
+- `SDL_InitDefault()`'s return value is checked. It returns false when
+  `Mix_OpenAudio` fails; that was silently ignored, so a dead audio device looked
+  identical to a working one right up until the screen stayed black. The app now
+  logs it and carries on, since a usable UI beats a blank screen.
+
+Still unverified on hardware: that playback actually works through audioserver, the
+volume keys, timing drift, and behaviour with the display off.
 
 ## Rendering the UI without a device
 

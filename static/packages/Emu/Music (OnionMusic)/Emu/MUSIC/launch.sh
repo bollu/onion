@@ -11,12 +11,12 @@
 # directory. $1 arrives absolute, so cd'ing away is safe.
 cd /mnt/SDCARD/App/OnionMusic || exit 1
 
-# Free the audio device: Miyoo's audioserver holds mi_ao open.
-. /mnt/SDCARD/.tmp_update/script/stop_audioserver.sh
+# Do NOT stop audioserver: this app links the system SDL_mixer, whose audio goes
+# through it. Killing it makes Mix_OpenAudio block. See App/OnionMusic/launch.sh.
 
 # Suppress hibernation while playing (read by keymon).
 touch /tmp/stay_awake
 
-./musicPlayer "$@"
+./musicPlayer "$@" 2>log.txt
 
 rm -f /tmp/stay_awake

@@ -77,7 +77,14 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
 
-    SDL_InitDefault();
+    // SDL_InitDefault() returns false when Mix_OpenAudio fails, which is what a
+    // missing or busy audio device looks like. Carry on regardless -- the UI is
+    // still usable and showing it beats a black screen -- but say so, because
+    // silently ignoring this is what made the audioserver bug so opaque.
+    bool audio_ok = SDL_InitDefault();
+    if (!audio_ok)
+        printf_debug("Audio init failed: %s. Playback will not work.\n",
+                     Mix_GetError());
 
     // settings_load() must precede lang_load(): the language file is named by
     // settings.language.

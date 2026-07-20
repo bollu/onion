@@ -5,9 +5,18 @@ what would block a release.
 
 ## Blocking a release
 
-- [ ] **Run `musicPlayer` on hardware.** Nothing below this line has been observed
-      on a device. The UI has only been rendered offscreen under qemu, and audio
-      has only been verified as far as "SDL_mixer decodes the file".
+- [ ] **Re-test `musicPlayer` on hardware.** It froze to a black screen on the
+      first attempt. Cause: `launch.sh` ran `stop_audioserver.sh`, copied from GMU,
+      which is wrong here — GMU bundles its own SDL and drives `mi_ao` directly,
+      whereas this links the system SDL_mixer whose audio goes *through*
+      audioserver, so `Mix_OpenAudio` blocked. tweaks is the proof it was the
+      cause: `HAS_AUDIO`, plays sounds, leaves audioserver alone, works. The line
+      is removed; **the fix is unconfirmed until someone runs it.**
+- [ ] **Confirm playback actually works through audioserver.** Not killing it fixes
+      the freeze, but whether MP3 playback then sounds correct — and whether the
+      volume keys work — has not been observed. If audioserver turns out to be
+      unusable for music, the alternative is GMU's approach: bundle an SDL that
+      drives `mi_ao` directly, which brings back the vendored-binary problem.
 - [ ] **Remove `demoApp` from the `apps:` target** in the root `Makefile` (both the
       build line and the preinstall line). It is a template for developers, not an
       app end users should find in their app list.
@@ -35,10 +44,8 @@ what would block a release.
       - Track-end polling at 30 fps, so up to 33 ms late.
       - Oscillator mismatch between wall and audio clocks (~50-100 ppm), negligible
         here because the clock resets each track.
-- [ ] **Check volume keys with `audioserver` killed.** `launch.sh` runs
-      `stop_audioserver.sh` to free `mi_ao`. Whether `system/volume.h` still works
-      in that state is unverified; volume may have to be driven by writing to
-      `/proc/mi_modules/mi_ao/mi_ao0` directly.
+- [ ] **Check the volume keys.** `launch.sh` no longer kills audioserver, so the
+      normal volume path should apply — but that has not been observed.
 - [ ] **Confirm resampling quality.** `SDL_InitDefault()` opens the device at
       48 kHz. The 44.1 kHz track is resampled by SDL_mixer 1.2, whose resampler is
       crude. Listen before assuming it is fine.
