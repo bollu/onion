@@ -22,13 +22,30 @@ data path the board does not have.
 
 ## Why not the campus Wi-Fi
 
-eduroam is WPA2-Enterprise. Onion has **no** EAP support anywhere (no matches for
-`eap`/`WPA-EAP`/`peap`/`mschap` in the tree; `wpa_supplicant.reset` is two lines),
-and MainUI's Wi-Fi picker is PSK-only, so an enterprise identity cannot even be
-entered. Campus networks also typically enforce client isolation, which would block
-the computer from reaching the device's SMB port even if it did associate.
+eduroam is WPA2-Enterprise. The shipped `wpa_supplicant` (v2.6, in
+`static/build/miyoo/app/`) *does* support it — PEAP, TTLS, MSCHAPV2, TLS 1.2,
+`ca_cert`, `domain_suffix_match` — but MainUI's Wi-Fi picker only offers a single
+password field, so an enterprise identity cannot be entered through the UI. Getting
+on eduroam means writing `/appconfigs/wpa_supplicant.conf` by hand, which is also
+Onion's documented workaround for MainUI's special-character bug (see the FAQ).
 
-The hotspot sidesteps both, and works on a train.
+Even then it would not help here: campus networks typically enforce client
+isolation, so the computer could not reach the device's SMB port.
+
+The hotspot sidesteps all of it, and works on a train.
+
+## Overlap with Tweaks
+
+**Tweaks already covers most of this.** *Network* has a **Hotspot** toggle and an
+**HTTP FS** toggle, the latter starting `.tmp_update/bin/filebrowser` — a web file
+manager rooted at `/mnt/SDCARD`, with upload. Turning both on gives the device's own
+access point plus browser-based file transfer, with no new code at all.
+
+What this app adds over that is a real SMB mount (the card appears as a disk in
+Finder rather than a web page) and a single button with the joining details on
+screen. That is a thinner justification than it first appeared, and it is worth
+knowing before investing more here. The likely future is to fold the hotspot toggle
+and the mount into one place rather than maintain two paths.
 
 ## Usage
 
@@ -106,7 +123,7 @@ hotspot has only ever run inside netplay, which defines `log`/`cleanup` helpers
 first; the scripts fall back to `echo` without them, but this path is untested
 standalone.
 
-Then: `make with-toolchain CMD=pc-link`, copy `build/App/PCLink/` to
+Then: `make with-toolchain CMD=pc-link`, copy `build/sideload/App/PCLink/` to
 `/mnt/SDCARD/App/PCLink/`, run it, mount from the Mac, and exit via **MENU** —
 confirming Wi-Fi comes back. Also kill it mid-share to exercise the signal handler.
 

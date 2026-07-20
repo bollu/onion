@@ -43,6 +43,8 @@ PACKAGES_EMU_DEST   := $(PACKAGES_DIR)/Emu
 PACKAGES_APP_DEST   := $(PACKAGES_DIR)/App
 PACKAGES_RAPP_DEST  := $(PACKAGES_DIR)/RApp
 BEBOOK_DEST         := $(PACKAGES_APP_DEST)/BeBook/App/BeBook
+# Drop-in app folders assembled by `sideload`, copyable straight to the SD card.
+SIDELOAD_DIR        := $(BUILD_DIR)/sideload/App
 # Sysroot library directory inside the toolchain container, where bebook picks up the
 # FreeType it links against.
 PREFIX_LIB          := $(PREFIX)/lib
@@ -126,7 +128,7 @@ include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external bebook bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
+.PHONY: all version core apps external bebook bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link sideload sideload-bebook release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
 
 all: dist
 
@@ -256,20 +258,20 @@ apps: $(CACHE)/.setup
 # the rest of the release pipeline. It is also built by `apps`.
 pc-link:
 	@$(ECHO) $(PRINT_RECIPE)
-	@mkdir -p $(BUILD_DIR)/App/PCLink
-	@cd $(SRC_DIR)/pcLink && BUILD_DIR="$(BUILD_DIR)/App/PCLink" make
-	@cp "$(STATIC_PACKAGES)/App/PCLink/App/PCLink/config.json" "$(STATIC_PACKAGES)/App/PCLink/App/PCLink/launch.sh" $(BUILD_DIR)/App/PCLink/
-	@chmod a+x $(BUILD_DIR)/App/PCLink/launch.sh
+	@mkdir -p "$(SIDELOAD_DIR)/PCLink"
+	@cd $(SRC_DIR)/pcLink && BUILD_DIR="$(SIDELOAD_DIR)/PCLink" make
+	@cp "$(STATIC_PACKAGES)/App/PCLink/App/PCLink/config.json" "$(STATIC_PACKAGES)/App/PCLink/App/PCLink/launch.sh" "$(SIDELOAD_DIR)/PCLink/"
+	@chmod a+x "$(SIDELOAD_DIR)/PCLink/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 
 # Quick iteration target for the music player: builds just this app into build/,
 # skipping the rest of the release pipeline. It is also built by `apps`.
 music-player:
 	@$(ECHO) $(PRINT_RECIPE)
-	@mkdir -p $(BUILD_DIR)/App/MusicPlayer
-	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(BUILD_DIR)/App/MusicPlayer" make
-	@cp "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/config.json" "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/launch.sh" $(BUILD_DIR)/App/MusicPlayer/
-	@chmod a+x $(BUILD_DIR)/App/MusicPlayer/launch.sh
+	@mkdir -p "$(SIDELOAD_DIR)/MusicPlayer"
+	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(SIDELOAD_DIR)/MusicPlayer" make
+	@cp "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/config.json" "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/launch.sh" "$(SIDELOAD_DIR)/MusicPlayer/"
+	@chmod a+x "$(SIDELOAD_DIR)/MusicPlayer/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 
 # Quick iteration target for the example app: builds just this app into build/,
@@ -280,28 +282,56 @@ music-player:
 # nested source tree, needs FreeType/libzip/libxml2, and compiles HarfBuzz from a
 # single-file amalgamation with per-file flags that the shared config cannot express.
 # This is the same arrangement as third-party/DinguxCommander, which also builds itself.
+# BEBOOK_OUT is overridden by sideload-bebook; by default this populates the
+# Package Manager catalogue.
+BEBOOK_OUT ?= $(BEBOOK_DEST)
 bebook:
 	@$(ECHO) $(PRINT_RECIPE)
 	@cd $(SRC_DIR)/bebook && HB_DIR="$(THIRD_PARTY_DIR)/harfbuzz/src" $(MAKE) reader
-	@mkdir -p "$(BEBOOK_DEST)/lib" "$(BEBOOK_DEST)/resources/fonts"
-	@cp $(SRC_DIR)/bebook/build/miyoomini/bebook "$(BEBOOK_DEST)/"
+	@mkdir -p "$(BEBOOK_OUT)/lib" "$(BEBOOK_OUT)/resources/fonts"
+	@cp $(SRC_DIR)/bebook/build/miyoomini/bebook "$(BEBOOK_OUT)/"
 	@cp $(SRC_DIR)/bebook/resources/fonts/*.ttf $(SRC_DIR)/bebook/resources/fonts/*.txt \
-	    "$(BEBOOK_DEST)/resources/fonts/"
+	    "$(BEBOOK_OUT)/resources/fonts/"
 # FreeType comes from the toolchain sysroot; libzip and libxml2 are absent from it and
 # from Onion's lib/, so bebook vendors them. HarfBuzz is compiled into the binary and
 # needs no library, and SDL_ttf/SDL_image are not linked at all.
-	@cp $(PREFIX_LIB)/libfreetype.so.6 "$(BEBOOK_DEST)/lib/"
+	@cp $(PREFIX_LIB)/libfreetype.so.6 "$(BEBOOK_OUT)/lib/"
 	@cp $(SRC_DIR)/bebook/deps/lib/libzip.so.5 $(SRC_DIR)/bebook/deps/lib/libxml2.so.2 \
 	    $(SRC_DIR)/bebook/deps/lib/libz.so.1 $(SRC_DIR)/bebook/deps/lib/liblzma.so.5 \
-	    "$(BEBOOK_DEST)/lib/"
+	    "$(BEBOOK_OUT)/lib/"
 	@$(ECHO) $(PRINT_DONE)
 
 demo-app:
 	@$(ECHO) $(PRINT_RECIPE)
-	@mkdir -p $(BUILD_DIR)/App/DemoApp
-	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(BUILD_DIR)/App/DemoApp" make
-	@cp "$(STATIC_PACKAGES)/App/Demo App/App/DemoApp/config.json" "$(STATIC_PACKAGES)/App/Demo App/App/DemoApp/launch.sh" $(BUILD_DIR)/App/DemoApp/
-	@chmod a+x $(BUILD_DIR)/App/DemoApp/launch.sh
+	@mkdir -p "$(SIDELOAD_DIR)/DemoApp"
+	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(SIDELOAD_DIR)/DemoApp" make
+	@cp "$(STATIC_PACKAGES)/App/Demo App/App/DemoApp/config.json" "$(STATIC_PACKAGES)/App/Demo App/App/DemoApp/launch.sh" "$(SIDELOAD_DIR)/DemoApp/"
+	@chmod a+x "$(SIDELOAD_DIR)/DemoApp/launch.sh"
+	@$(ECHO) $(PRINT_DONE)
+
+# Assembles drop-in App folders under $(SIDELOAD_DIR), ready to copy straight to
+# /mnt/SDCARD/App/ without the Package Manager or a reflash. MainUI finds apps by
+# scanning App/*/config.json (src/common/utils/apps.h), so config.json + launch.sh
+# + the binary is all a folder needs.
+#
+# To get them onto the device: Tweaks > Network > Hotspot and HTTP FS, join the
+# device's own Wi-Fi, browse to it and drop the folder into /App/.
+sideload: music-player demo-app pc-link sideload-bebook
+	@$(ECHO) $(COLOR_BLUE)"\n-- Drop-in app folders ready in $(SIDELOAD_DIR)"$(COLOR_NORMAL)
+	@$(ECHO) $(PRINT_DONE)
+
+# bebook needs more than a binary -- vendored libs, fonts, and an icon and .cfg that
+# live with the package -- so it reuses the `bebook` recipe with the output
+# redirected, rather than duplicating the assembly.
+sideload-bebook:
+	@$(ECHO) $(PRINT_RECIPE)
+	@$(MAKE) bebook BEBOOK_OUT="$(SIDELOAD_DIR)/BeBook"
+	@cp "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/config.json" \
+	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/launch.sh" \
+	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/icon.png" \
+	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/bebook.cfg" \
+	    "$(SIDELOAD_DIR)/BeBook/"
+	@chmod a+x "$(SIDELOAD_DIR)/BeBook/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 
 $(THIRD_PARTY_DIR)/RetroArch-patch/bin/retroarch_miyoo354:
