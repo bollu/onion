@@ -49,7 +49,7 @@ double player_elapsed(void)
 
     // Don't run past the end before the main loop's poll notices.
     if (_duration > 0.0 && elapsed > _duration) {
-#ifndef HAS_AUDIO
+#ifndef MUSICPLAYER_AUDIO
         // No backend to ask, so the clock is what retires a track.
         audio_markFinished();
 #endif

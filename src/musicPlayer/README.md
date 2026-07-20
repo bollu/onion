@@ -56,6 +56,23 @@ Two things changed alongside, so a future failure is not as opaque:
   identical to a working one right up until the screen stayed black. The app now
   logs it and carries on, since a usable UI beats a blank screen.
 
+### Audio setup
+
+Adopted from MiyooPod's `src/audio.c`, which is SDL_mixer too:
+
+- **Tracks are decoded from RAM.** `audio_load()` reads the file, wraps it in
+  `SDL_RWFromMem` and hands it to `Mix_LoadMUS_RW`, so playback does no SD I/O — the
+  thing MiyooPod blames for starving the decoder mid-song. Over 32 MB it streams
+  instead; the device has 128 MB and MP3s are 3-10 MB. Verified on this exact library:
+  `Mix_LoadMUS_RW` reports `MUS_MP3_MAD`, plays and seeks.
+- **A music-sized buffer.** `SDL_InitDefault()` opens the device at 4096 frames, which
+  suits UI blips, so `audio_init()` reopens it at 8192. MiyooPod uses 524288, which is
+  not copied: `SDL_AudioSpec.samples` is a `Uint16`, so that cannot mean frames.
+- **`Mix_HookMusicFinished` sets a flag**, replacing the end-of-track poll.
+
+Not adopted: `Mix_MusicDuration` and `Mix_GetMusicPosition` are SDL2-only, which is why
+`mp3.h` and the elapsed clock exist.
+
 ### Compared with MiyooPod
 
 [MiyooPod](https://github.com/danfragoso/miyoopod) is a working MP3 player for this

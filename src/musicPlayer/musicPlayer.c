@@ -67,12 +67,16 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigHandler);
     signal(SIGTERM, sigHandler);
 
-    // False when Mix_OpenAudio fails; carry on, since a usable UI beats a blank screen.
-    bool audio_ok = SDL_InitDefault();
+    SDL_InitDefault();
     printf_debug("milestone: SDL_InitDefault at %u ms\n", SDL_GetTicks());
-    if (!audio_ok)
+
+    // Audio is opened here rather than by SDL_InitDefault, so a music-sized buffer can
+    // be used without imposing it on the apps that only play UI blips. Carry on if it
+    // fails: a usable UI beats a blank screen.
+    if (!audio_init())
         printf_debug("Audio init failed: %s. Playback will not work.\n",
                      audio_error());
+    printf_debug("milestone: audio_init at %u ms\n", SDL_GetTicks());
 
     // settings_load() first: it names the language file lang_load() reads.
     settings_load();
@@ -197,9 +201,8 @@ int main(int argc, char *argv[])
         if (acc_ticks < time_step)
             continue;
 
-        // Polled, not Mix_HookMusicFinished: that fires on the audio thread.
-        if (player_currentIndex() >= 0 && !player_isPaused() &&
-            !player_isPlaying()) {
+        // Set by Mix_HookMusicFinished, which only flips a flag, so no polling.
+        if (player_currentIndex() >= 0 && audio_takeFinished()) {
             player_next(false);
             updateNowPlayingNote(&list, has_tracks);
             redraw = true;
