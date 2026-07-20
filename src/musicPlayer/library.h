@@ -48,8 +48,12 @@ int library_scan(const char *dir_path)
     track_count = 0;
 
     if ((dp = opendir(dir_path)) == NULL) {
-        printf_debug("Music directory not found: %s\n", dir_path);
-        return 0;
+        // Create it so there is somewhere obvious to put music, rather than an empty
+        // library pointing at a path that does not exist.
+        printf_debug("Music directory missing, creating: %s\n", dir_path);
+        mkdirs(dir_path);
+        if ((dp = opendir(dir_path)) == NULL)
+            return 0;
     }
 
     while ((ep = readdir(dp)) != NULL && track_count < MAX_TRACKS) {

@@ -337,11 +337,20 @@ void LibraryIndex::write_box_art(const std::filesystem::path &path) const
         return;
     }
 
-    // Absent the directory, this book is not in a library MainUI scans, so there is
-    // nothing to integrate with and creating one would be litter.
+    // Inside the configured library the Imgs directory is ours to create -- MainUI
+    // reads box art from there, so it existing is the point. Elsewhere, the user is
+    // browsing some folder of their own and scattering directories would be litter,
+    // so only write when one is already there.
     if (!std::filesystem::is_directory(imgs_dir, ec))
     {
-        return;
+        std::error_code parent_ec;
+        const bool in_library =
+            std::filesystem::equivalent(path.parent_path(), books_dir, parent_ec) &&
+            !parent_ec;
+        if (!in_library || !std::filesystem::create_directories(imgs_dir, ec))
+        {
+            return;
+        }
     }
 
     if (auto cover = extract_cover(path, BOX_ART_MAX_W, BOX_ART_MAX_H))
@@ -365,6 +374,10 @@ void LibraryIndex::note_opened(const std::filesystem::path &path, int progress_p
     entry.last_opened = stamp;
     entry.progress_percent = progress_percent;
     dirty = true;
+
+    // Launching from the games list never reaches index_one(), which is what the shelf
+    // uses, so write the cover here too or a book opened that way never gets one.
+    write_box_art(path);
 }
 
 std::filesystem::path LibraryIndex::cover_path(const LibraryEntry &entry) const
