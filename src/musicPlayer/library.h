@@ -18,7 +18,7 @@
 typedef struct Track {
     char path[STR_MAX * 2];
     char label[STR_MAX];
-    double duration; // seconds; 0 until computed, see library_loadDurations()
+    double duration; // seconds; 0 until computed, filled on first play
 } Track;
 
 static Track tracks[MAX_TRACKS];
@@ -92,15 +92,6 @@ int library_indexOfPath(const char *path)
             return i;
     }
     return -1;
-}
-
-// Separate from the scan: reads every file end to end, so run it after first draw.
-void library_loadDurations(void)
-{
-    for (int i = 0; i < track_count; i++) {
-        if (tracks[i].duration == 0.0)
-            tracks[i].duration = mp3_getDuration(tracks[i].path);
-    }
 }
 
 // Fills `list` with one ACTION item per track.

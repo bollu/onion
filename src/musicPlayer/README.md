@@ -3,7 +3,21 @@
 A native music player, intended to replace the vendored GMU build in
 `static/packages/App/Music Player (GMU)/`.
 
-**Status: froze to a black screen on hardware; believed fixed, not yet re-tested.**
+**Status: froze to a black screen on hardware; two candidate fixes in, not yet
+re-tested.** Build with `NO_AUDIO=1` to take audio out of the picture entirely:
+
+```sh
+make with-toolchain CMD="music-player NO_AUDIO=1 DEBUG=1"
+```
+
+That produces the same `App/OnionMusic/` folder with SDL_mixer unlinked, so a black
+screen then implicates startup or rendering rather than audio. `DEBUG=1` matters:
+`printf_debug()` compiles to nothing without it, so a normal build logs nothing at
+all. Startup milestones then land in `/mnt/SDCARD/.tmp_update/logs/musicPlayer.log`.
+
+Verified offscreen under qemu with the dummy video driver: the app reaches its main
+loop and paints at **117 ms**, with and without a track argument. The audio seam in
+`audio.h` is what makes running the whole app there possible.
 
 The cause was `launch.sh` running `stop_audioserver.sh` before starting the app.
 That line was copied from GMU, and it is right for GMU: GMU `LD_PRELOAD`s its own

@@ -3,11 +3,14 @@ INCLUDE_CJSON=1
 include ../common/config.mk
 
 TARGET = musicPlayer
-# HAS_AUDIO enables the SDL_mixer branches in utils/sdl_init.h and theme/sound.h.
+LDFLAGS := $(LDFLAGS) -lSDL -lSDL_image -lSDL_ttf -lSDL_rotozoom
+
+# NO_AUDIO=1 builds the UI without SDL_mixer, to test rendering on its own.
+# HAS_AUDIO also gates the audio branches in utils/sdl_init.h and theme/sound.h.
+ifneq ($(NO_AUDIO),1)
 CFLAGS := $(CFLAGS) -DHAS_AUDIO
-# MP3 support comes from SDL_mixer 1.2 built against libmad (MUS_MP3_MAD); no
-# extra decoder library is needed. SDL_rotozoom is used by the theme renderer.
-LDFLAGS := $(LDFLAGS) -lSDL -lSDL_image -lSDL_ttf -lSDL_mixer -lSDL_rotozoom
+LDFLAGS := $(LDFLAGS) -lSDL_mixer
+endif
 
 include ../common/commands.mk
 include ../common/recipes.mk

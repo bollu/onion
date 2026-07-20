@@ -69,10 +69,17 @@ is the same fix GMU needed in #1749 (commit `1975e9c0`). What is left:
 
 - [ ] **Now Playing redraws every frame** while a track runs, because the progress
       bar advances. Once per second would be enough and much cheaper.
-- [ ] **Durations are computed for the whole library at startup**, after the first
-      frame is drawn. `mp3.h` walks every frame header of every file, so a large
-      library on a slow SD card will stall the UI. Make it lazy per-track or move it
-      to a background thread.
+- [x] **Durations are no longer computed for the whole library at startup.** They are
+      filled on first play, for the played track only, as MiyooPod does
+      (`src/library.go:192`). The old pass also ran *before* the first frame was ever
+      flipped, despite a comment claiming otherwise.
+      Note the stall was smaller than assumed: `mp3_getDuration()` measures **5.7
+      ms/file** under emulation, so ~0.6 s for 100 tracks — not obviously enough to
+      explain a black screen. That measurement is on container I/O, though, and SD-card
+      random reads are far slower, so it may still matter on device with a large
+      library. Milestone logging will say.
+- [ ] **Cache durations across runs**, keyed by path, as MiyooPod does with its library
+      JSON. Would remove even the one-file-per-play cost.
 - [ ] **Browse albums as folders.** *Wanted most.* `library_scan()` skips
       subdirectories outright (`if (ep->d_type == DT_DIR ... ) continue`), so a
       folder of albums dropped into `Media/Music` shows an empty library — the

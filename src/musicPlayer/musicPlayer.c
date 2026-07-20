@@ -69,13 +69,15 @@ int main(int argc, char *argv[])
 
     // False when Mix_OpenAudio fails; carry on, since a usable UI beats a blank screen.
     bool audio_ok = SDL_InitDefault();
+    printf_debug("milestone: SDL_InitDefault at %u ms\n", SDL_GetTicks());
     if (!audio_ok)
         printf_debug("Audio init failed: %s. Playback will not work.\n",
-                     Mix_GetError());
+                     audio_error());
 
     // settings_load() first: it names the language file lang_load() reads.
     settings_load();
     lang_load();
+    printf_debug("milestone: settings+lang at %u ms\n", SDL_GetTicks());
 
     // MainUI passes the track path as $1 for entries launched from a system.
     const char *start_path = (argc > 1) ? argv[1] : NULL;
@@ -84,7 +86,8 @@ int main(int argc, char *argv[])
 
     int found = library_scan(scan_dir);
     bool has_tracks = found > 0;
-    printf_debug("Found %d track(s) in %s\n", found, scan_dir);
+    printf_debug("milestone: scanned %d track(s) in %s at %u ms\n", found, scan_dir,
+                 SDL_GetTicks());
 
     List list = list_createWithSticky(has_tracks ? found : 1, "OnionMusic");
     if (has_tracks)
@@ -108,7 +111,7 @@ int main(int argc, char *argv[])
     updateNowPlayingNote(&list, has_tracks);
     KeyState keystate[320] = {(KeyState)0};
     bool redraw = true;
-    bool durations_loaded = false;
+    bool first_paint = true;
 
     uint32_t acc_ticks = 0, last_ticks = SDL_GetTicks(),
              time_step = 1000 / FRAMES_PER_SECOND;
@@ -194,13 +197,6 @@ int main(int argc, char *argv[])
         if (acc_ticks < time_step)
             continue;
 
-        // Reads every file to count frames, so do it once the UI is on screen.
-        if (!durations_loaded && has_tracks) {
-            library_loadDurations();
-            durations_loaded = true;
-            redraw = true;
-        }
-
         // Polled, not Mix_HookMusicFinished: that fires on the audio thread.
         if (player_currentIndex() >= 0 && !player_isPaused() &&
             !player_isPlaying()) {
@@ -223,6 +219,10 @@ int main(int argc, char *argv[])
             SDL_BlitSurface(screen, NULL, video, NULL);
             SDL_Flip(video);
 
+            if (first_paint) {
+                printf_debug("milestone: first paint at %u ms\n", SDL_GetTicks());
+                first_paint = false;
+            }
             redraw = false;
         }
 
@@ -233,7 +233,7 @@ int main(int argc, char *argv[])
     SDL_Flip(video);
 
     player_free();
-    Mix_CloseAudio();
+    audio_close();
 
     list_free(&list);
     lang_free();

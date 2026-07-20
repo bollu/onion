@@ -2,12 +2,12 @@
 #define MUSICPLAYER_PLAYER_H__
 
 #include <SDL/SDL.h>
-#include <SDL/SDL_mixer.h>
 #include <stdbool.h>
 #include <stdlib.h>
 
 #include "utils/log.h"
 
+#include "./audio.h"
 #include "./library.h"
 #include "./mp3.h"
 
@@ -18,7 +18,6 @@ typedef enum RepeatMode { REPEAT_OFF,
                           REPEAT_ALL,
                           REPEAT_ONE } RepeatMode;
 
-static Mix_Music *_music = NULL;
 static int _current_index = -1;
 static bool _paused = false;
 static bool _shuffle = false;
@@ -30,7 +29,7 @@ static uint32_t _play_start_ticks = 0;
 
 int player_currentIndex(void) { return _current_index; }
 bool player_isPaused(void) { return _paused; }
-bool player_isPlaying(void) { return Mix_PlayingMusic() != 0; }
+bool player_isPlaying(void) { return audio_isPlaying(); }
 bool player_shuffle(void) { return _shuffle; }
 RepeatMode player_repeat(void) { return _repeat; }
 double player_duration(void) { return _duration; }
@@ -38,7 +37,7 @@ double player_duration(void) { return _duration; }
 void player_toggleShuffle(void) { _shuffle = !_shuffle; }
 void player_cycleRepeat(void) { _repeat = (RepeatMode)((_repeat + 1) % 3); }
 
-/** Elapsed seconds in the current track. Frozen while paused. */
+// Elapsed seconds, frozen while paused.
 double player_elapsed(void)
 {
     if (_current_index < 0)
@@ -49,19 +48,20 @@ double player_elapsed(void)
     double elapsed = _base_offset + (SDL_GetTicks() - _play_start_ticks) / 1000.0;
 
     // Don't run past the end before the main loop's poll notices.
-    if (_duration > 0.0 && elapsed > _duration)
+    if (_duration > 0.0 && elapsed > _duration) {
+#ifndef HAS_AUDIO
+        // No backend to ask, so the clock is what retires a track.
+        audio_markFinished();
+#endif
         return _duration;
+    }
 
     return elapsed;
 }
 
 void player_stop(void)
 {
-    if (_music != NULL) {
-        Mix_HaltMusic();
-        Mix_FreeMusic(_music);
-        _music = NULL;
-    }
+    audio_stop();
     _current_index = -1;
     _paused = false;
     _duration = 0.0;
@@ -75,41 +75,44 @@ bool player_play(int index)
 
     player_stop();
 
-    _music = Mix_LoadMUS(tracks[index].path);
-    if (_music == NULL) {
-        printf_debug("Mix_LoadMUS failed for %s: %s\n", tracks[index].path,
-                     Mix_GetError());
+    if (!audio_load(tracks[index].path)) {
+        printf_debug("Load failed for %s: %s\n", tracks[index].path, audio_error());
         return false;
     }
 
-    if (Mix_PlayMusic(_music, 1) == -1) {
-        printf_debug("Mix_PlayMusic failed: %s\n", Mix_GetError());
-        Mix_FreeMusic(_music);
-        _music = NULL;
+    if (!audio_play()) {
+        printf_debug("Play failed: %s\n", audio_error());
         return false;
     }
 
     _current_index = index;
     _paused = false;
-    _duration = tracks[index].duration;
     _base_offset = 0.0;
     _play_start_ticks = SDL_GetTicks();
+
+    // Duration is computed here, for this track only, and after playback has already
+    // started so scanning the file never delays the first note. Scanning the whole
+    // library up front cost N files to display one.
+    if (tracks[index].duration == 0.0)
+        tracks[index].duration = mp3_getDuration(tracks[index].path);
+    _duration = tracks[index].duration;
+
     return true;
 }
 
 void player_togglePause(void)
 {
-    if (_music == NULL)
+    if (_current_index < 0)
         return;
 
     if (_paused) {
-        Mix_ResumeMusic();
+        audio_resume();
         _play_start_ticks = SDL_GetTicks();
         _paused = false;
     }
     else {
         _base_offset = player_elapsed();
-        Mix_PauseMusic();
+        audio_pause();
         _paused = true;
     }
 }
@@ -169,10 +172,10 @@ void player_previous(void)
     player_play(prev);
 }
 
-/** Seeks by `delta` seconds, clamped to the track. */
+// Seeks by delta seconds, clamped to the track.
 void player_seek(double delta)
 {
-    if (_music == NULL)
+    if (_current_index < 0)
         return;
 
     double target = player_elapsed() + delta;
@@ -182,13 +185,13 @@ void player_seek(double delta)
     if (_duration > 0.0 && target > _duration - 1.0)
         target = _duration - 1.0;
 
-    if (Mix_SetMusicPosition(target) == 0) {
+    if (audio_seek(target)) {
         _base_offset = target;
         _play_start_ticks = SDL_GetTicks();
     }
     else {
         // Leave the clock alone if the backend refused, so the display stays honest.
-        printf_debug("Seek failed: %s\n", Mix_GetError());
+        printf_debug("Seek failed: %s\n", audio_error());
     }
 }
 
