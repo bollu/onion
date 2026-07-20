@@ -1,5 +1,5 @@
 {
-"label":"Music Player",
+"label":"OnionMusic",
 "icon":"../../Icons/Default/app/music.png",
 "launch":"launch.sh",
 "description":"Play MP3s from Media/Music"

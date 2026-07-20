@@ -237,7 +237,7 @@ apps: $(CACHE)/.setup
 	@cd $(SRC_DIR)/playActivityUI && BUILD_DIR="$(PACKAGES_APP_DEST)/Activity Tracker/App/PlayActivity" make
 	@find $(SRC_DIR)/playActivityUI -depth -type d -name res -exec cp -r {}/. "$(PACKAGES_APP_DEST)/Activity Tracker/App/PlayActivity/res/" \;
 	@find $(SRC_DIR)/packageManager -depth -type d -name res -exec cp -r {}/. $(BUILD_DIR)/App/PackageManager/res/ \;
-	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(PACKAGES_APP_DEST)/Music Player/App/MusicPlayer" make
+	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(PACKAGES_APP_DEST)/OnionMusic/App/OnionMusic" make
 	@cd $(SRC_DIR)/demoApp && BUILD_DIR="$(PACKAGES_APP_DEST)/Demo App/App/DemoApp" make
 	@cd $(SRC_DIR)/pcLink && BUILD_DIR="$(PACKAGES_APP_DEST)/PCLink/App/PCLink" make
 	@$(MAKE) bebook
@@ -250,7 +250,7 @@ apps: $(CACHE)/.setup
 	@cp -a "$(PACKAGES_APP_DEST)/Tweaks/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/ThemeSwitcher/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/PCLink/." $(BUILD_DIR)/
-	@cp -a "$(PACKAGES_APP_DEST)/Music Player/." $(BUILD_DIR)/
+	@cp -a "$(PACKAGES_APP_DEST)/OnionMusic/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/Demo App/." $(BUILD_DIR)/
 	@cp -a "$(PACKAGES_APP_DEST)/BeBook/." $(BUILD_DIR)/
 
@@ -268,10 +268,10 @@ pc-link:
 # skipping the rest of the release pipeline. It is also built by `apps`.
 music-player:
 	@$(ECHO) $(PRINT_RECIPE)
-	@mkdir -p "$(SIDELOAD_DIR)/MusicPlayer"
-	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(SIDELOAD_DIR)/MusicPlayer" make
-	@cp "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/config.json" "$(STATIC_PACKAGES)/App/Music Player/App/MusicPlayer/launch.sh" "$(SIDELOAD_DIR)/MusicPlayer/"
-	@chmod a+x "$(SIDELOAD_DIR)/MusicPlayer/launch.sh"
+	@mkdir -p "$(SIDELOAD_DIR)/OnionMusic"
+	@cd $(SRC_DIR)/musicPlayer && BUILD_DIR="$(SIDELOAD_DIR)/OnionMusic" make
+	@cp "$(STATIC_PACKAGES)/App/OnionMusic/App/OnionMusic/config.json" "$(STATIC_PACKAGES)/App/OnionMusic/App/OnionMusic/launch.sh" "$(SIDELOAD_DIR)/OnionMusic/"
+	@chmod a+x "$(SIDELOAD_DIR)/OnionMusic/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 
 # Quick iteration target for the example app: builds just this app into build/,
@@ -328,7 +328,6 @@ sideload-bebook:
 	@$(MAKE) bebook BEBOOK_OUT="$(SIDELOAD_DIR)/BeBook"
 	@cp "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/config.json" \
 	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/launch.sh" \
-	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/icon.png" \
 	    "$(STATIC_PACKAGES)/App/BeBook/App/BeBook/bebook.cfg" \
 	    "$(SIDELOAD_DIR)/BeBook/"
 	@chmod a+x "$(SIDELOAD_DIR)/BeBook/launch.sh"

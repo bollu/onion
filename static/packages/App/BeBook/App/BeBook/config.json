@@ -1,7 +1,6 @@
 {
 "label":"bebook",
-"icon":"icon.png",
-"iconsel":"icon.png",
+"icon":"../../Icons/Default/app/ereader.png",
 "launch":"launch.sh",
 "description":"bebook vVERSION"
 }

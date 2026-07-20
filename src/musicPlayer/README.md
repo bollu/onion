@@ -1,4 +1,4 @@
-# musicPlayer
+# musicPlayer (OnionMusic)
 
 A native music player, intended to replace the vendored GMU build in
 `static/packages/App/Music Player (GMU)/`.
@@ -34,7 +34,7 @@ are needed or it will not work:
 
 ## Build
 
-This **is** the shipped Music Player: it replaced the vendored GMU package, and
+This **is** the shipped music player: it replaced the vendored GMU package, and
 is built by the `apps` target and preinstalled, so a normal `make all` includes it.
 
 For a quick iteration loop that skips the rest of the release build:
@@ -43,12 +43,21 @@ For a quick iteration loop that skips the rest of the release build:
 make with-toolchain CMD=music-player
 ```
 
-Output in `build/sideload/App/MusicPlayer/`. Copy that folder to `/mnt/SDCARD/App/MusicPlayer/`
+Output in `build/sideload/App/OnionMusic/`. Copy that folder to `/mnt/SDCARD/App/OnionMusic/`
 to try it without reflashing.
 
 The sample tracks that used to live in the GMU package moved to
-`static/packages/App/Music Player/Media/Music/`, and land in `/mnt/SDCARD/Media/Music`
+`static/packages/App/OnionMusic/Media/Music/`, and land in `/mnt/SDCARD/Media/Music`
 — which is where this scans.
+
+## Why it is called OnionMusic
+
+The app is named `OnionMusic`, not `Music Player`, so it does not collide with a
+GMU install already on the card. MainUI lists apps by the `label` in config.json
+(`getInstalledApps()` in `src/common/utils/apps.h`), and GMU's label is
+"Music Player" — two entries with the same label are only distinguished by a
+`dup_id` suffix, which is not something a user should have to decode. The source
+directory and binary stay `musicPlayer`.
 
 ## Why this is worth doing
 
