@@ -287,6 +287,14 @@ music-player:
 BEBOOK_OUT ?= $(BEBOOK_DEST)
 bebook:
 	@$(ECHO) $(PRINT_RECIPE)
+# PREFIX is set inside the toolchain image and points at the cross sysroot that
+# supplies FreeType. Run bare on the host it is empty, so the copy below would
+# reach for /lib/libfreetype.so.6 and fail with nothing to explain why.
+	@test -n "$(PREFIX)" || { \
+	    echo "bebook needs the cross toolchain sysroot (PREFIX is unset)."; \
+	    echo "Run it inside the container, e.g.:"; \
+	    echo "    make with-toolchain CMD=$(or $(MAKECMDGOALS),bebook)"; \
+	    exit 1; }
 	@cd $(SRC_DIR)/bebook && HB_DIR="$(THIRD_PARTY_DIR)/harfbuzz/src" $(MAKE) reader
 	@mkdir -p "$(BEBOOK_OUT)/lib" "$(BEBOOK_OUT)/resources/fonts"
 	@cp $(SRC_DIR)/bebook/build/miyoomini/bebook "$(BEBOOK_OUT)/"
