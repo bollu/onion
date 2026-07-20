@@ -13,7 +13,7 @@ so starting from this directory gets you a working app without reverse-engineeri
 make demo-app
 ```
 
-Output lands in `sideload/App/DemoApp/`. To try it on hardware, copy that folder to
+Output lands in `build/sideload/App/DemoApp/`. To try it on hardware, copy that folder to
 `/mnt/SDCARD/App/DemoApp/` on the SD card; it shows up in the app list on the next
 reload.
 
