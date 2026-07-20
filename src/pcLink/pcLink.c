@@ -161,7 +161,7 @@ int main(void)
 
     // Unconditional: covers MENU, B, SIGTERM and quitting mid-startup.
     if (terminated)
-        printf_debug("Terminated by signal, tearing down\n");
+        print_debug("Terminated by signal, tearing down");
     sharing_stop();
 
     SDL_FillRect(video, NULL, 0);
