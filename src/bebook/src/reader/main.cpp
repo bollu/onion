@@ -19,6 +19,7 @@
 #include "util/held_key_tracker.h"
 #include "util/key_value_file.h"
 #include "util/math.h"
+#include "util/rom_screen.h"
 #include "util/screenshot.h"
 #include "util/sdl_font_cache.h"
 #include "util/task_queue.h"
@@ -445,6 +446,16 @@ int main(int argc, char **argv)
     view_stack.shutdown();
     library.flush();
     state_store.flush();
+
+    // Leave the page behind as this book's Game Switcher preview, so Recents shows
+    // where the reader actually is rather than the cover. Only meaningful when
+    // launched with a book path: that is what MainUI recorded in the recent list and
+    // what the switcher hashes to find this file. `screen` still holds the last
+    // rendered frame.
+    if (requested_book_path)
+    {
+        write_rom_screen(screen, *requested_book_path);
+    }
 
     SDL_FreeSurface(screen);
     SDL_Quit();

@@ -14,6 +14,12 @@ This app links the **system** SDL_mixer, whose audio goes *through* audioserver.
 Killing it first leaves `Mix_OpenAudio` with nothing to talk to, and it blocks —
 a freeze, on a black screen, before anything is drawn.
 
+Confirmed afterwards by tracing the audio path properly: the system SDL 1.2 has one
+audio driver, `dsp`, which writes to `/dev/dsp`. `runtime.sh:225` launches MainUI with
+`LD_PRELOAD=miyoo/lib/libpadsp.so`, and every app launched from MainUI inherits it —
+that shim intercepts `/dev/dsp` and forwards to audioserver. Killing audioserver left
+the shim forwarding to a process that no longer existed, so `Mix_OpenAudio` blocked.
+
 The comparison that isolated it:
 
 | app | `HAS_AUDIO` | kills audioserver | result |
@@ -35,6 +41,28 @@ Two things changed alongside, so a future failure is not as opaque:
   `Mix_OpenAudio` fails; that was silently ignored, so a dead audio device looked
   identical to a working one right up until the screen stayed black. The app now
   logs it and carries on, since a usable UI beats a blank screen.
+
+### Compared with MiyooPod
+
+[MiyooPod](https://github.com/danfragoso/miyoopod) is a working MP3 player for this
+device, and takes the opposite trade deliberately. It bundles its own **SDL2** stack
+(`libSDL2.so`, `libSDL2_mixer.so`, `libmpg123.so.0`) built with Miyoo's `mmiyoo`
+video and audio drivers, then kills audioserver, MainUI *and* keymon to own the
+device outright, restoring them on exit. Volume it drives itself through
+`MI_AO_SETVOLUME` ioctls on `/dev/mi_ao`, reproducing Onion's logarithmic curve.
+
+That works, but it is inseparable from vendoring the stack this rewrite removed: the
+system SDL 1.2 has no `mmiyoo` driver, only `dsp`. Going direct to the hardware means
+shipping an SDL that can, which is where GMU's several megabytes of binaries came
+from.
+
+Worth taking from it without that: pinning the CPU governor during playback (done),
+session persistence — restoring queue, position and shuffle/repeat on launch — and
+browsing by artist/album rather than a flat list. Its album-art fetching needs the
+network and is out of scope here.
+
+If audioserver turns out to be unusable for continuous playback, MiyooPod's approach
+is the proven fallback, at that cost.
 
 Still unverified on hardware: that playback actually works through audioserver, the
 volume keys, timing drift, and behaviour with the display off.
