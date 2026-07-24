@@ -80,6 +80,16 @@ TEST(LexiconService, AmbiguousFormReturnsMultipleAnalyses)
     EXPECT_NE(find_features(res, "pres+3+p"), nullptr);
 }
 
+TEST(LexiconService, AccentInsensitiveFallback)
+{
+    LexiconService lex = open();
+    // A book with a missing/wrong accent ("perche" for "perché") still resolves via the
+    // accent-folded fallback.
+    EXPECT_TRUE(has_lemma(lex.lemmatize("perche"), "perch\xC3\xA9"));  // perché
+    // The exact accented form is of course unaffected.
+    EXPECT_TRUE(has_lemma(lex.lemmatize("perch\xC3\xA9"), "perch\xC3\xA9"));
+}
+
 TEST(LexiconService, EnglishGlosses)
 {
     LexiconService lex = open();

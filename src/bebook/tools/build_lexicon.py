@@ -360,7 +360,7 @@ DROP TABLE IF EXISTS defs_it_it;
 DROP TABLE IF EXISTS conj;
 DROP TABLE IF EXISTS meta;
 
-CREATE TABLE forms      (form TEXT NOT NULL, lemma TEXT NOT NULL, pos TEXT, features TEXT);
+CREATE TABLE forms      (form TEXT NOT NULL, lemma TEXT NOT NULL, pos TEXT, features TEXT, form_fold TEXT);
 CREATE TABLE defs_it_en (lemma TEXT NOT NULL, sense_no INTEGER, gloss TEXT NOT NULL);
 CREATE TABLE defs_it_it (lemma TEXT NOT NULL, sense_no INTEGER, gloss TEXT NOT NULL);
 CREATE TABLE conj       (lemma TEXT NOT NULL, tense TEXT NOT NULL, person INTEGER, form TEXT);
@@ -369,6 +369,7 @@ CREATE TABLE meta       (key TEXT PRIMARY KEY, value TEXT);
 
 INDEXES = """
 CREATE INDEX idx_forms_form      ON forms(form);
+CREATE INDEX idx_forms_fold      ON forms(form_fold);
 CREATE INDEX idx_defs_en_lemma   ON defs_it_en(lemma);
 CREATE INDEX idx_defs_it_lemma   ON defs_it_it(lemma);
 CREATE INDEX idx_conj_lemma      ON conj(lemma, tense, person);
@@ -380,6 +381,23 @@ def norm(s):
     return s.lower()
 
 
+# Accent folding for the fallback lookup: lowercase + strip accents to base ASCII vowels.
+# A book may carry a wrong or missing accent ("perche" for "perché"); folding both the
+# stored form and the query to this base lets an exact-miss still resolve. Must stay in
+# lockstep with fold_accents() in src/lexicon/lexicon_service.cpp.
+_FOLD = {
+    "à": "a", "á": "a", "â": "a", "ã": "a",
+    "è": "e", "é": "e", "ê": "e", "ë": "e",
+    "ì": "i", "í": "i", "î": "i", "ï": "i",
+    "ò": "o", "ó": "o", "ô": "o", "õ": "o", "ö": "o",
+    "ù": "u", "ú": "u", "û": "u", "ü": "u",
+}
+
+
+def fold(s):
+    return "".join(_FOLD.get(c, c) for c in s.lower())
+
+
 def add_verb(db, lemma, en, it, tables):
     """Insert a verb: definitions, conjugation table, and a form row per cell."""
     for i, g in enumerate(en):
@@ -388,7 +406,8 @@ def add_verb(db, lemma, en, it, tables):
         db.execute("INSERT INTO defs_it_it VALUES (?,?,?)", (lemma, i + 1, g))
 
     # infinitive maps to itself
-    db.execute("INSERT INTO forms VALUES (?,?,?,?)", (norm(lemma), lemma, "VER", "inf"))
+    db.execute("INSERT INTO forms VALUES (?,?,?,?,?)",
+               (norm(lemma), lemma, "VER", "inf", fold(lemma)))
 
     for tense in TENSES:
         forms = tables[tense]
@@ -402,13 +421,14 @@ def add_verb(db, lemma, en, it, tables):
                 feat = f"{TENSE_FEAT[tense]}+{PERSON_FEAT[person]}"
                 for token in form.split():
                     db.execute(
-                        "INSERT INTO forms VALUES (?,?,?,?)",
-                        (norm(token), lemma, "VER", feat),
+                        "INSERT INTO forms VALUES (?,?,?,?,?)",
+                        (norm(token), lemma, "VER", feat, fold(token)),
                     )
 
 
 def add_word(db, lemma, pos, en, it):
-    db.execute("INSERT INTO forms VALUES (?,?,?,?)", (norm(lemma), lemma, pos, "base"))
+    db.execute("INSERT INTO forms VALUES (?,?,?,?,?)",
+               (norm(lemma), lemma, pos, "base", fold(lemma)))
     for i, g in enumerate(en):
         db.execute("INSERT INTO defs_it_en VALUES (?,?,?)", (lemma, i + 1, g))
     for i, g in enumerate(it):
@@ -635,7 +655,7 @@ def _flush_word(db, word, entries, seen_defs, counters):
     is_verb = any(e.get("pos") == "verb" for e in real)
     head_pos = KAIKKI_POS.get(real[0].get("pos"))
     if head_pos:
-        form_rows.add((norm(lemma), lemma, head_pos, "inf" if head_pos == "VER" else "base"))
+        form_rows.add((norm(lemma), lemma, head_pos, "inf" if head_pos == "VER" else "base", fold(lemma)))
 
     for e in real:
         pos = KAIKKI_POS.get(e.get("pos"))
@@ -651,10 +671,10 @@ def _flush_word(db, word, entries, seen_defs, counters):
             feat = form_features(tags)
             if feat is None:
                 continue
-            form_rows.add((norm(surface), lemma, pos, feat))
+            form_rows.add((norm(surface), lemma, pos, feat, fold(surface)))
 
     for row in form_rows:
-        db.execute("INSERT INTO forms VALUES (?,?,?,?)", row)
+        db.execute("INSERT INTO forms VALUES (?,?,?,?,?)", row)
         counters["forms"] += 1
 
     # Conjugation tables (verbs): the four simple tenses from forms[], plus a synthesized

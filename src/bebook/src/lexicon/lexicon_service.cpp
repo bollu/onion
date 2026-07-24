@@ -28,6 +28,59 @@ std::string to_lower(const std::string &s)
     return out;
 }
 
+// Fold to the accent-insensitive key stored in forms.form_fold: lowercase, and map each
+// Latin-1 accented vowel (2-byte UTF-8, lead 0xC3) to its base ASCII letter. Mirrors
+// fold() in tools/build_lexicon.py, so a query folds to exactly what the build stored.
+// Used only as a fallback when the exact-accent lookup misses, so a book that carries a
+// wrong/missing accent ("perche" for "perché") still resolves.
+std::string fold_accents(const std::string &s)
+{
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size();)
+    {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0xC3 && i + 1 < s.size())
+        {
+            const unsigned char d = static_cast<unsigned char>(s[i + 1]);
+            char base = 0;
+            switch (d)
+            {
+                // lowercase à á â ã / uppercase À Á Â Ã
+                case 0xA0: case 0xA1: case 0xA2: case 0xA3:
+                case 0x80: case 0x81: case 0x82: case 0x83: base = 'a'; break;
+                // è é ê ë / È É Ê Ë
+                case 0xA8: case 0xA9: case 0xAA: case 0xAB:
+                case 0x88: case 0x89: case 0x8A: case 0x8B: base = 'e'; break;
+                // ì í î ï / Ì Í Î Ï
+                case 0xAC: case 0xAD: case 0xAE: case 0xAF:
+                case 0x8C: case 0x8D: case 0x8E: case 0x8F: base = 'i'; break;
+                // ò ó ô õ ö / Ò Ó Ô Õ Ö
+                case 0xB2: case 0xB3: case 0xB4: case 0xB5: case 0xB6:
+                case 0x92: case 0x93: case 0x94: case 0x95: case 0x96: base = 'o'; break;
+                // ù ú û ü / Ù Ú Û Ü
+                case 0xB9: case 0xBA: case 0xBB: case 0xBC:
+                case 0x99: case 0x9A: case 0x9B: case 0x9C: base = 'u'; break;
+                default: base = 0; break;
+            }
+            if (base != 0)
+            {
+                out += base;
+            }
+            else
+            {
+                out += static_cast<char>(c);
+                out += static_cast<char>(d);
+            }
+            i += 2;
+            continue;
+        }
+        out += static_cast<char>(std::tolower(c));  // ASCII lowering
+        i += 1;
+    }
+    return out;
+}
+
 // Tenses in display order, with human names. Kept in sync with tools/build_lexicon.py.
 struct TenseInfo { const char *key; const char *display; };
 const TenseInfo TENSE_ORDER[] = {
@@ -82,26 +135,20 @@ bool LexiconService::ok() const
     return impl->db != nullptr;
 }
 
-std::vector<LemmaEntry> LexiconService::lemmatize(const std::string &surface) const
+namespace
 {
-    std::vector<LemmaEntry> out;
-    if (!impl->db)
-    {
-        return out;
-    }
-
-    static const char *sql =
-        "SELECT lemma, pos, features FROM forms WHERE form = ?";
-
+// Run one lemmatize query (`column` is "form" or "form_fold") with `key`, appending rows.
+void query_forms(sqlite3 *db, const char *column, const std::string &key,
+                 std::vector<LemmaEntry> &out)
+{
+    const std::string sql =
+        std::string("SELECT lemma, pos, features FROM forms WHERE ") + column + " = ?";
     sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
     {
-        return out;
+        return;
     }
-
-    std::string key = to_lower(surface);
     sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
-
     while (sqlite3_step(stmt) == SQLITE_ROW)
     {
         LemmaEntry e;
@@ -112,6 +159,26 @@ std::vector<LemmaEntry> LexiconService::lemmatize(const std::string &surface) co
         out.push_back(std::move(e));
     }
     sqlite3_finalize(stmt);
+}
+} // namespace
+
+std::vector<LemmaEntry> LexiconService::lemmatize(const std::string &surface) const
+{
+    std::vector<LemmaEntry> out;
+    if (!impl->db)
+    {
+        return out;
+    }
+
+    // Exact match on the accented form first.
+    query_forms(impl->db, "form", to_lower(surface), out);
+
+    // Only if nothing matched, fall back to the accent-folded key, so a book with a wrong
+    // or missing accent still resolves. Exact matches always win when they exist.
+    if (out.empty())
+    {
+        query_forms(impl->db, "form_fold", fold_accents(surface), out);
+    }
     return out;
 }
 
