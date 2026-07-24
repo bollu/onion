@@ -18,13 +18,36 @@ namespace
 
 std::string to_lower(const std::string &s)
 {
-    // ASCII-only lowering. Italian lookup keys are stored lowercased by the build
-    // script; accented bytes (UTF-8 multibyte) are left untouched, which matches the
-    // build script's str.lower() for the Latin-1 range we use here.
-    std::string out = s;
-    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
-        return static_cast<char>(std::tolower(c));
-    });
+    // Lowercase ASCII and the Latin-1 accented letters (À->à etc.), to match the build
+    // script's str.lower() for the range Italian uses. Accents are preserved (only the case
+    // changes), so "Città"/"È" still exact-match the stored lowercase accented forms; without
+    // the accented-capital handling they would only resolve via the accent-folded fallback.
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size();)
+    {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        if (c == 0xC3 && i + 1 < s.size())
+        {
+            const unsigned char d = static_cast<unsigned char>(s[i + 1]);
+            // Latin-1 uppercase letters À..Þ are 0xC3 0x80..0x9E; lowercase is +0x20. 0x97 in
+            // that block is × (multiplication sign), not a letter, so leave it be.
+            if (d >= 0x80 && d <= 0x9E && d != 0x97)
+            {
+                out += static_cast<char>(0xC3);
+                out += static_cast<char>(d + 0x20);
+            }
+            else
+            {
+                out += static_cast<char>(c);
+                out += static_cast<char>(d);
+            }
+            i += 2;
+            continue;
+        }
+        out += static_cast<char>((c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c);
+        i += 1;
+    }
     return out;
 }
 
@@ -325,13 +348,25 @@ std::string describe_morphology(const std::string &pos, const std::string &featu
         }
         if (!cur.empty()) tokens.push_back(cur);
 
+        // Gender/number for non-verb inflections (noun plurals, adjective forms). Tokens are
+        // deliberately distinct from the verb person/number tokens (1/2/3, s/p) above.
+        static const std::unordered_map<std::string, std::string> GENDER_NUMBER = {
+            {"f", "femminile"}, {"m", "maschile"},
+            {"sg", "singolare"}, {"pl", "plurale"},
+        };
+
         std::string person, number;
         for (const auto &tok : tokens)
         {
             auto t_it = TENSE_NAME.find(tok);
+            auto g_it = GENDER_NUMBER.find(tok);
             if (t_it != TENSE_NAME.end())
             {
                 parts.push_back(t_it->second);
+            }
+            else if (g_it != GENDER_NUMBER.end())
+            {
+                parts.push_back(g_it->second);
             }
             else if (tok == "1" || tok == "2" || tok == "3")
             {

@@ -578,6 +578,27 @@ def form_features(tags):
     return f"{code}+{p}+{n}" if (p and n) else code
 
 
+def noun_features(tags):
+    """Feature string for a NON-verb inflection (noun plural, adjective gender/number, ...),
+    or None to skip. form_features() only understands verb morphology and returns None for
+    these, which would drop every noun plural / adjective form from lemmatization. Codes
+    (fem/masc/sing/plur) are distinct from the verb person/number tokens and are rendered by
+    describe_morphology in src/lexicon/lexicon_service.cpp."""
+    ts = set(tags)
+    if ts & SKIP_FORM_TAGS:
+        return None
+    parts = []
+    if "feminine" in ts:
+        parts.append("f")
+    elif "masculine" in ts:
+        parts.append("m")
+    if "plural" in ts:
+        parts.append("pl")
+    elif "singular" in ts:
+        parts.append("sg")
+    return "+".join(parts) if parts else "base"
+
+
 # The four simple indicative tenses we surface as conjugation tabs. Maps a form's tags to
 # (tense_key, person_index 0..5), or None if the form is not one of these cells.
 def conj_slot(tags):
@@ -661,6 +682,7 @@ def _flush_word(db, word, entries, seen_defs, counters):
         pos = KAIKKI_POS.get(e.get("pos"))
         if pos is None:
             continue
+        is_verb_entry = e.get("pos") == "verb"
         for fm in e.get("forms", []):
             tags = fm.get("tags") or []
             if set(tags) & DISQUALIFY or set(tags) & SKIP_FORM_TAGS:
@@ -668,7 +690,8 @@ def _flush_word(db, word, entries, seen_defs, counters):
             surface = strip_stress((fm.get("form") or "").strip())
             if not surface or " " in surface or surface == "-":
                 continue
-            feat = form_features(tags)
+            # Verbs carry tense/mood morphology; nouns/adjectives carry gender/number.
+            feat = form_features(tags) if is_verb_entry else noun_features(tags)
             if feat is None:
                 continue
             form_rows.add((norm(surface), lemma, pos, feat, fold(surface)))
@@ -714,10 +737,16 @@ def _flush_word(db, word, entries, seen_defs, counters):
         db.execute("INSERT INTO conj VALUES (?,?,?,?)", (lemma, tense, idx, form))
         counters["conj"] += 1
 
-    if participle:
-        for idx, form in enumerate(passato_prossimo(aux or "avere", participle)):
+    # Passato prossimo is periphrastic (aux + participle) and not in kaikki's forms[]. Only
+    # synthesize it when the auxiliary is known: guessing "avere" would ship "ho andato" for
+    # the essere-verbs (andare/partire/...) whose real form is "sono andato/a". Better absent
+    # than grammatically wrong.
+    if participle and aux:
+        for idx, form in enumerate(passato_prossimo(aux, participle)):
             db.execute("INSERT INTO conj VALUES (?,?,?,?)", (lemma, "passato_prossimo", idx, form))
             counters["conj"] += 1
+    elif participle:
+        counters["pp_skipped_no_aux"] = counters.get("pp_skipped_no_aux", 0) + 1
 
 
 def ingest_kaikki(out_path, jsonl_path, limit=None):
@@ -766,6 +795,9 @@ def ingest_kaikki(out_path, jsonl_path, limit=None):
     print(f"Wrote {out_path} from kaikki: {counters['lemmas']} lemmas "
           f"({counters['verbs']} verbs), {counters['forms']} form rows, "
           f"{counters['defs']} en-glosses, {counters['conj']} conj rows.")
+    skipped = counters.get("pp_skipped_no_aux", 0)
+    if skipped:
+        print(f"  ({skipped} verbs had no tagged auxiliary; passato prossimo omitted for them)")
     write_xz(out_path)
 
 

@@ -841,35 +841,11 @@ void TokenView::ws_move_word(int dir)
         }
     }
 
-    // Otherwise walk to the nearest line in `dir` that has words, scrolling one line at a
-    // time when we run past the visible region. `land_first` picks the first word of the
-    // new line when moving forward, the last when moving back. The guard bounds the walk
-    // over blank/image lines; the book's start/end returns without moving.
-    const int n = state->num_text_display_lines();
-    int line = state->ws_line;
-    for (int guard = 0; guard < 4096; ++guard)
+    // Otherwise cross to the nearest line in `dir` that has words.
+    if (ws_walk(dir))
     {
-        int cand = line + dir;
-        if (cand < 0)
-        {
-            if (scroll_reporting(-1) == 0) return;
-            cand = 0;
-        }
-        else if (cand >= n)
-        {
-            if (scroll_reporting(1) == 0) return;
-            cand = n - 1;
-        }
-        line = cand;
-
-        auto spans = spans_at(state->line_scroller, line);
-        if (!spans.empty())
-        {
-            state->ws_line = line;
-            state->ws_word = dir > 0 ? 0 : (int)spans.size() - 1;
-            state->needs_render = true;
-            return;
-        }
+        auto spans = spans_at(state->line_scroller, state->ws_line);
+        state->ws_word = dir > 0 ? 0 : (int)spans.size() - 1;
     }
 }
 
@@ -880,33 +856,58 @@ void TokenView::ws_move_line(int dir)
         return;
     }
 
+    if (ws_walk(dir))
+    {
+        auto spans = spans_at(state->line_scroller, state->ws_line);
+        // Keep the column roughly where it was rather than snapping to word 0.
+        state->ws_word = std::min(state->ws_word, (int)spans.size() - 1);
+    }
+}
+
+bool TokenView::ws_walk(int dir)
+{
     const int n = state->num_text_display_lines();
+    // Bound the scrolling so a press over a large image/blank region can't jump the page
+    // far: search at most ~one page of scrolling, then restore the original position so a
+    // fruitless press is a no-op. The 4096 guard only bounds the walk over already-visible
+    // blank lines.
+    const int scroll_budget = n + 1;
+    const int start_line_num = state->line_scroller.get_line_number();
+    int scrolled = 0;
     int line = state->ws_line;
+
     for (int guard = 0; guard < 4096; ++guard)
     {
         int cand = line + dir;
         if (cand < 0)
         {
-            if (scroll_reporting(-1) == 0) return;
+            if (scrolled >= scroll_budget || scroll_reporting(-1) == 0) break;
+            ++scrolled;
             cand = 0;
         }
         else if (cand >= n)
         {
-            if (scroll_reporting(1) == 0) return;
+            if (scrolled >= scroll_budget || scroll_reporting(1) == 0) break;
+            ++scrolled;
             cand = n - 1;
         }
         line = cand;
 
-        auto spans = spans_at(state->line_scroller, line);
-        if (!spans.empty())
+        if (!spans_at(state->line_scroller, line).empty())
         {
             state->ws_line = line;
-            // Keep the column roughly where it was rather than snapping to word 0.
-            state->ws_word = std::min(state->ws_word, (int)spans.size() - 1);
             state->needs_render = true;
-            return;
+            return true;
         }
     }
+
+    // Not found within budget: undo any scrolling so the highlight and page stay put.
+    const int now = state->line_scroller.get_line_number();
+    if (now != start_line_num)
+    {
+        scroll(start_line_num - now);
+    }
+    return false;
 }
 
 void TokenView::ws_open_selected()

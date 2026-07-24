@@ -83,11 +83,12 @@ TEST(LexiconService, AmbiguousFormReturnsMultipleAnalyses)
 TEST(LexiconService, AccentInsensitiveFallback)
 {
     LexiconService lex = open();
-    // A book with a missing/wrong accent ("perche" for "perché") still resolves via the
-    // accent-folded fallback.
-    EXPECT_TRUE(has_lemma(lex.lemmatize("perche"), "perch\xC3\xA9"));  // perché
+    // A book with a missing/wrong accent ("universita" for "università") still resolves via
+    // the accent-folded fallback. (The unaccented spelling must not itself be a real word --
+    // e.g. "perche" is the plural of the fish "perca", so there an exact match rightly wins.)
+    EXPECT_TRUE(has_lemma(lex.lemmatize("universita"), "universit\xC3\xA0"));  // università
     // The exact accented form is of course unaffected.
-    EXPECT_TRUE(has_lemma(lex.lemmatize("perch\xC3\xA9"), "perch\xC3\xA9"));
+    EXPECT_TRUE(has_lemma(lex.lemmatize("universit\xC3\xA0"), "universit\xC3\xA0"));
 }
 
 TEST(LexiconService, EnglishGlosses)
