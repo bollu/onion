@@ -68,7 +68,8 @@ private:
     void move_tab(int dir);
     void scroll_body(int dir);
 
-    const lexicon::LexiconService &lexicon;
+    // Note: LexiconService is used only during construction (to gather `analyses`); it is
+    // not kept as a member, so a popup never outlives a query and holds no service reference.
     SystemStyling &styling;
     uint32_t styling_sub_id;
 

@@ -68,8 +68,7 @@ WordMeaningView::WordMeaningView(
     const lexicon::LexiconService &lexicon,
     SystemStyling &styling
 )
-    : lexicon(lexicon)
-    , styling(styling)
+    : styling(styling)
     , styling_sub_id(styling.subscribe_to_changes([this](SystemStyling::ChangeId) {
           _needs_render = true;
       }))
@@ -386,21 +385,26 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     const int pron_col = 92;                  // conjugation pronoun column width
 
     // Flatten body items into physical lines: prose paragraphs wrap; conjugation and blank
-    // items are one line each.
+    // items are one line each. `item` indexes back into `items` (not a pointer) so nothing
+    // dangles; `paras` is reserved up front so `paras.back().c_str()` handed to StyledText
+    // below can't be invalidated by a reallocation mid-loop.
     const std::vector<BodyItem> items = body_items();
     std::vector<std::string> paras;                        // prose text, kept alive for draw
     std::vector<std::vector<text::Line>> layouts;
-    struct Phys { int type; int para; int line; const BodyItem *item; };  // 0 prose,1 conj,2 blank
+    paras.reserve(items.size());
+    layouts.reserve(items.size());
+    struct Phys { int type; int para; int line; int item; };  // type: 0 prose,1 conj,2 blank
     std::vector<Phys> phys;
-    for (const auto &it : items)
+    for (int i = 0; i < static_cast<int>(items.size()); ++i)
     {
+        const BodyItem &it = items[i];
         if (it.kind == BodyItem::Kind::Conjugation)
         {
-            phys.push_back({ 1, -1, -1, &it });
+            phys.push_back({ 1, -1, -1, i });
         }
         else if (it.kind == BodyItem::Kind::Blank || it.a.empty())
         {
-            phys.push_back({ 2, -1, -1, &it });
+            phys.push_back({ 2, -1, -1, i });
         }
         else
         {
@@ -410,7 +414,7 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
             layouts.push_back(text::layout_paragraph(st, font, body_w, text::Align::Left, true));
             for (int k = 0; k < static_cast<int>(layouts.back().size()); ++k)
             {
-                phys.push_back({ 0, pidx, k, &it });
+                phys.push_back({ 0, pidx, k, i });
             }
         }
     }
@@ -437,8 +441,9 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         }
         if (p.type == 1)
         {
-            blit_line(dest, font, p.item->a, cx0, ry, theme.secondary_text, theme.background);
-            blit_line(dest, font, p.item->b, cx0 + pron_col, ry, theme.main_text, theme.background);
+            const BodyItem &it = items[p.item];
+            blit_line(dest, font, it.a, cx0, ry, theme.secondary_text, theme.background);
+            blit_line(dest, font, it.b, cx0 + pron_col, ry, theme.main_text, theme.background);
         }
         else
         {

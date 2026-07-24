@@ -269,6 +269,45 @@ int aligned_left_x(Align align, int left_x, int width, Fixed natural)
     return left_x;
 }
 
+int pen_x_at(
+    const StyledText &st,
+    const Line &ln,
+    uint32_t byte_offset,
+    int left_x,
+    int width,
+    Align align
+)
+{
+    const int base = aligned_left_x(align, left_x, width, ln.natural_width);
+    const Fixed prefix = measure_styled(st, ln.offset, byte_offset - ln.offset);
+
+    // Justification opens the inter-word gaps: every whitespace before `byte_offset` gets an
+    // equal share of the stretch plus, from the left, one 1/64px unit of the remainder --
+    // the same distribution draw_styled_line applies to the glyph advances.
+    Fixed extra_before = 0;
+    if (align == Align::Justify && ln.stretch_gaps > 0)
+    {
+        const Fixed extra_total = ln.target_width - ln.natural_width;
+        if (extra_total != 0)
+        {
+            const Fixed per_gap = extra_total / static_cast<Fixed>(ln.stretch_gaps);
+            const Fixed remainder = extra_total - per_gap * static_cast<Fixed>(ln.stretch_gaps);
+            const Fixed rmag = remainder >= 0 ? remainder : -remainder;
+            const Fixed rstep = remainder >= 0 ? 1 : -1;
+
+            uint32_t ws_before = 0;
+            for (uint32_t i = ln.offset; i < byte_offset && i < st.length; ++i)
+            {
+                if (is_whitespace(st.text[i])) ++ws_before;
+            }
+            const Fixed getting = std::min<Fixed>(static_cast<Fixed>(ws_before), rmag);
+            extra_before = per_gap * static_cast<Fixed>(ws_before) + rstep * getting;
+        }
+    }
+
+    return base + fixed_round(prefix + extra_before);
+}
+
 int draw_line_aligned(
     SDL_Surface *dst,
     const StyledText &st,

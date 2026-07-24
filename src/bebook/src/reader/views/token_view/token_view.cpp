@@ -70,51 +70,38 @@ text::StyledText styled_for(const TextLine *tl, const text::Font *font)
 
 struct WordBox { int x0; int x1; };
 
-// On-screen x-range of word [span.start, span.end) in a laid-out line, replicating
-// draw_styled_line's justification distribution so the highlight lands exactly on the
-// glyphs. The word contains no internal whitespace, so only the stretch of the gaps
-// *before* it shifts its start.
+// A TextLine as a text::Line (the whole line is one laid-out line, offset 0), so the shared
+// text engine can position it.
+text::Line as_text_line(const TextLine *tl)
+{
+    text::Line ln;
+    ln.offset = 0;
+    ln.length = static_cast<uint32_t>(tl->text.size());
+    ln.trailing_hyphen = tl->trailing_hyphen;
+    ln.natural_width = tl->natural_width;
+    ln.target_width = tl->target_width;
+    ln.stretch_gaps = tl->stretch_gaps;
+    return ln;
+}
+
+text::Align line_align(const TextLine *tl)
+{
+    return tl->centered ? text::Align::Center : text::Align::Justify;
+}
+
+// On-screen x-range of word [span.start, span.end) in a laid-out line, via the shared
+// text::pen_x_at so the highlight geometry uses the exact same justification math as the
+// glyph drawing (no re-implementation to drift out of sync).
 WordBox word_box(
     const TextLine *tl, const text::Font *font, int text_width, int margin_x,
     const WordSpan &span
 )
 {
     text::StyledText styled = styled_for(tl, font);
-
-    int x_start = margin_x;
-    if (tl->centered)
-    {
-        int w = text::fixed_round(text::measure_styled(styled, 0, styled.length));
-        x_start += (text_width - w) / 2;
-    }
-
-    const text::Fixed extra_total = tl->centered ? 0 : (tl->target_width - tl->natural_width);
-    const uint32_t gaps = tl->stretch_gaps;
-
-    text::Fixed extra_before = 0;
-    if (gaps > 0 && extra_total != 0)
-    {
-        const text::Fixed per_gap = extra_total / static_cast<text::Fixed>(gaps);
-        const text::Fixed remainder = extra_total - per_gap * static_cast<text::Fixed>(gaps);
-        const text::Fixed rmag = remainder >= 0 ? remainder : -remainder;
-        const text::Fixed rstep = remainder >= 0 ? 1 : -1;
-
-        uint32_t ws_before = 0;
-        for (uint32_t i = 0; i < span.start && i < styled.length; ++i)
-        {
-            if (is_whitespace(tl->text[i])) ++ws_before;
-        }
-        const text::Fixed getting = static_cast<text::Fixed>(
-            std::min<uint32_t>(ws_before, static_cast<uint32_t>(rmag))
-        );
-        extra_before = per_gap * static_cast<text::Fixed>(ws_before) + rstep * getting;
-    }
-
-    const text::Fixed prefix = text::measure_styled(styled, 0, span.start);
-    const text::Fixed word_w = text::measure_styled(styled, span.start, span.end - span.start);
-
-    const int x0 = x_start + text::fixed_round(prefix + extra_before);
-    const int x1 = x0 + text::fixed_round(word_w);
+    const text::Line ln = as_text_line(tl);
+    const text::Align align = line_align(tl);
+    const int x0 = text::pen_x_at(styled, ln, span.start, margin_x, text_width, align);
+    const int x1 = text::pen_x_at(styled, ln, span.end, margin_x, text_width, align);
     return {x0, x1};
 }
 
@@ -443,7 +430,6 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
 
             const DisplayLine *line = state->line_scroller.get_line_relative(state->ws_line);
             const auto *tl = static_cast<const TextLine *>(line);
-            const uint32_t len = static_cast<uint32_t>(tl->text.size());
             const WordSpan &sp = spans[state->ws_word];
 
             WordBox wb = word_box(tl, font, state->text_width(), margin_x, sp);
@@ -460,23 +446,14 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             const auto &hlbg = theme.highlight_background;
             SDL_FillRect(dest_surface, &box, SDL_MapRGB(dest_surface->format, hlbg.r, hlbg.g, hlbg.b));
 
-            // Redraw the whole line's glyphs in the highlight colour but clipped to the
-            // word box, so only the selected word repaints and its justification stays
-            // pixel-identical to the body text underneath.
+            // Redraw the whole line's glyphs in the highlight colour but clipped to the word
+            // box, so only the selected word repaints. Through the same aligned-draw helper
+            // the body text uses, so the glyphs stay pixel-identical under the highlight.
             text::StyledText styled = styled_for(tl, font);
-            const text::Fixed extra = tl->centered ? 0 : (tl->target_width - tl->natural_width);
-
-            int x = margin_x;
-            if (tl->centered)
-            {
-                const int w = text::fixed_round(text::measure_styled(styled, 0, len));
-                x += (state->text_width() - w) / 2;
-            }
-
-            text::draw_styled_line(
-                dest_surface, styled, 0, len,
-                extra, tl->stretch_gaps, tl->trailing_hyphen,
-                x, box_y + leading_above + ascent,
+            text::draw_line_aligned(
+                dest_surface, styled, as_text_line(tl),
+                margin_x, state->text_width(),
+                box_y + leading_above + ascent, line_align(tl),
                 theme.highlight_text, theme.highlight_background,
                 &box
             );

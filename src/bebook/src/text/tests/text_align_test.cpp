@@ -62,3 +62,46 @@ TEST(TextLayout, WrapsLongLineAndRespectsAlignment)
         EXPECT_EQ(ln.target_width, ln.natural_width);
     }
 }
+
+TEST(TextAlign, PenXAtMatchesMeasureAndStretch)
+{
+    Font *font = Engine::instance().load("resources/fonts/Charis-Regular.ttf", 26);
+    ASSERT_NE(font, nullptr);
+
+    const std::string s = "alpha beta gamma";  // three words, two spaces
+    StyledText st;
+    st.text = s.c_str();
+    st.length = static_cast<uint32_t>(s.size());
+    st.runs = nullptr;
+    st.family = font->family;
+    st.size_px = font->size_px;
+
+    // A single ragged line (whole string), so target == natural.
+    Line ln;
+    ln.offset = 0;
+    ln.length = st.length;
+    ln.trailing_hyphen = false;
+    ln.natural_width = measure_styled(st, 0, st.length);
+    ln.target_width = ln.natural_width;
+    ln.stretch_gaps = 2;
+
+    const int left = 40, width = 600;
+    const uint32_t beta_off = 6;  // "alpha " -> index of 'b'
+
+    // Left: pen x at an offset is left + the measured prefix; the start is exactly left.
+    EXPECT_EQ(pen_x_at(st, ln, 0, left, width, Align::Left), left);
+    EXPECT_EQ(pen_x_at(st, ln, beta_off, left, width, Align::Left),
+              left + fixed_round(measure_styled(st, 0, beta_off)));
+
+    // Center: the start pen equals aligned_left_x on the natural width.
+    EXPECT_EQ(pen_x_at(st, ln, 0, left, width, Align::Center),
+              aligned_left_x(Align::Center, left, width, ln.natural_width));
+
+    // Justify: widen the target so the two gaps stretch; a later offset shifts right past its
+    // ragged position by the share of stretch in the gaps before it.
+    ln.target_width = ln.natural_width + int_to_fixed(20);  // +20px over 2 gaps
+    const int left_x = pen_x_at(st, ln, beta_off, left, width, Align::Left);
+    const int just_x = pen_x_at(st, ln, beta_off, left, width, Align::Justify);
+    EXPECT_GT(just_x, left_x);                 // "beta" pushed right by one stretched gap
+    EXPECT_NEAR(just_x - left_x, 10, 1);       // one of two gaps' worth of the +20px
+}

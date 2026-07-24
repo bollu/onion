@@ -85,6 +85,20 @@ std::vector<Line> layout_paragraph(
 // the alignment math is unit-testable without a font.
 int aligned_left_x(Align align, int left_x, int width, Fixed natural);
 
+// On-screen x of the cluster boundary at absolute byte `byte_offset` within a laid-out
+// line, under `align` inside [left_x, left_x+width]. For Justify this accounts for the
+// inter-word stretch distributed before the offset, exactly as draw_line_aligned/
+// draw_styled_line position the glyphs. Used to hit-test a word span for highlighting so
+// that geometry and drawing share one implementation of the justification math.
+int pen_x_at(
+    const StyledText &st,
+    const Line &ln,
+    uint32_t byte_offset,
+    int left_x,
+    int width,
+    Align align
+);
+
 // Draw one laid-out line inside [left_x, left_x + width] at glyph baseline `baseline_y`,
 // applying `align`: Left pens at left_x; Center pens at left_x + (width - natural)/2;
 // Justify opens the inter-word gaps to target_width. Thin wrapper over draw_styled_line;
