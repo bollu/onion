@@ -102,64 +102,10 @@ void initialize_views(
     }
 }
 
-class SystemKeyChordTracker
-{
-    bool _menu_held = false;
-    bool _select_held = false;
-
-    bool _exit_on_menu_release = false;
-    bool _exit_requested = false;
-
-public:
-
-    // Report keypress event. Return filtered key code.
-    SDLKey on_keypress(SDLKey key)
-    {
-        // Block any other keys while special key is held
-        SDLKey filtered_key = (_menu_held || _select_held) ? SDLK_UNKNOWN : key;
-
-        if (key == SW_BTN_SELECT)
-        {
-            _select_held = true;
-        }
-
-        if (key == SW_BTN_MENU)
-        {
-            _menu_held = true;
-            _exit_on_menu_release = true;
-        }
-        else
-        {
-            // Cancel app exit if a menu chord was used (e.g. change brightness)
-            _exit_on_menu_release = false;
-        }
-
-        return filtered_key;
-    }
-
-    // Report keyrelease event.
-    void on_keyrelease(SDLKey key)
-    {
-        if (key == SW_BTN_MENU)
-        {
-            _menu_held = false;
-
-            if (_exit_on_menu_release)
-            {
-                _exit_requested = true;
-            }
-        }
-        else if (key == SW_BTN_SELECT)
-        {
-            _select_held = false;
-        }
-    }
-
-    bool exit_requested() const
-    {
-        return _exit_requested;
-    }
-};
+// bebook is always launched as an OnionOS "game" (from Recents / the EBOOK system), so
+// keymon owns the MENU button to open the GameSwitcher and bebook must never act on MENU
+// itself. Keys are therefore dispatched raw; leaving a book is done from the GameSwitcher's
+// exit (or B out of the reader).
 
 bool quit = false;
 
@@ -300,7 +246,6 @@ int main(int argc, char **argv)
             SW_BTN_R2
         }
     );
-    SystemKeyChordTracker chord_tracker;
 
     auto key_held_callback = [&view_stack](SDLKey key, uint32_t held_ms) {
         view_stack.on_keyheld(key, held_ms);
@@ -308,6 +253,7 @@ int main(int argc, char **argv)
 
     // Timing
     Timer idle_timer;
+    Timer game_switcher_preview_timer;
     FPSLimiter limit_fps(TARGET_FPS);
     const uint32_t avg_loop_time = 1000 / TARGET_FPS;
 
@@ -395,7 +341,7 @@ int main(int argc, char **argv)
                     {
                         idle_timer.reset();
 
-                        SDLKey key = chord_tracker.on_keypress(event.key.keysym.sym);
+                        SDLKey key = event.key.keysym.sym;
 
                         if (key == SW_BTN_POWER)
                         {
@@ -422,18 +368,10 @@ int main(int argc, char **argv)
                         }
                     }
                     break;
-                case SDL_KEYUP:
-                    {
-                        SDLKey key = event.key.keysym.sym;
-                        chord_tracker.on_keyrelease(key);
-                    }
-                    break;
                 default:
                     break;
             }
         }
-
-        quit = quit || chord_tracker.exit_requested();
 
         held_key_tracker.accumulate(avg_loop_time); // Pretend perfect loop timing for event firing consistency
         ran_user_code = held_key_tracker.for_longest_held(key_held_callback) || ran_user_code;
@@ -451,6 +389,17 @@ int main(int argc, char **argv)
             {
                 SDL_BlitSurface(screen, NULL, video, NULL);
                 SDL_Flip(video);
+
+                // Keep the GameSwitcher tile current: keymon can suspend bebook behind the
+                // switcher without it exiting, and the switcher reads the preview PNG from
+                // disk, so a preview written only on exit would be stale or missing. Throttled
+                // because composing the tile (cover + scaled page) is not free.
+                if (requested_book_path &&
+                    game_switcher_preview_timer.elapsed_ms() >= 3000)
+                {
+                    write_rom_screen(screen, *requested_book_path);
+                    game_switcher_preview_timer.reset();
+                }
             }
         }
 
