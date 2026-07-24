@@ -7,3 +7,6 @@ bebook.cfg
 # Python bytecode from tools/
 __pycache__/
 *.pyc
+
+# Vendored SQLite amalgamation, fetched by tools/fetch_sqlite.sh (like the HarfBuzz submodule).
+third-party/sqlite/

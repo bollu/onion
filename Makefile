@@ -299,6 +299,9 @@ bebook:
 	@cp $(SRC_DIR)/bebook/build/miyoomini/bebook "$(BEBOOK_OUT)/"
 	@cp $(SRC_DIR)/bebook/resources/fonts/*.ttf $(SRC_DIR)/bebook/resources/fonts/*.txt \
 	    "$(BEBOOK_OUT)/resources/fonts/"
+# The Italian dictionary DB. Read-only at runtime; resolves relative to bebook's cwd, the
+# same convention as resources/fonts (see INTEGRATION.md).
+	@cp $(SRC_DIR)/bebook/resources/italian.sqlite "$(BEBOOK_OUT)/resources/"
 # FreeType comes from the toolchain sysroot; libzip and libxml2 are absent from it and
 # from Onion's lib/, so bebook vendors them. HarfBuzz is compiled into the binary and
 # needs no library, and SDL_ttf/SDL_image are not linked at all.

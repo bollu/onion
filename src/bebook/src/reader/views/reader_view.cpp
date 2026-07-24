@@ -1,9 +1,12 @@
 #include "./reader_view.h"
 
 #include "./selection_menu.h"
+#include "./word_meaning_view.h"
 #include "./token_view/token_view.h"
 #include "./token_view/token_view_styling.h"
 
+#include "lexicon/lexicon_service.h"
+#include "reader/config.h"
 #include "reader/system_styling.h"
 #include "reader/view_stack.h"
 
@@ -13,6 +16,7 @@
 #include "util/sdl_font_cache.h"
 
 #include <iostream>
+#include <memory>
 
 struct ReaderViewState
 {
@@ -28,8 +32,13 @@ struct ReaderViewState
 
     ViewStack &view_stack;
 
+    // Opened once and shared by every meaning popup. Read-only; if the DB is missing it is
+    // simply !ok() and lookups return empty, so a missing dictionary degrades to an empty
+    // popup rather than a crash.
+    lexicon::LexiconService lexicon;
+
     std::unique_ptr<TokenView> token_view;
-    
+
     ReaderViewState(std::filesystem::path path, DocAddr seek_address, std::shared_ptr<DocReader> reader, SystemStyling &sys_styling, TokenViewStyling &token_view_styling, uint32_t token_view_styling_sub_id, ViewStack &view_stack)
         : filename(path.filename()),
           reader(reader),
@@ -37,6 +46,7 @@ struct ReaderViewState
           token_view_styling(token_view_styling),
           token_view_styling_sub_id(token_view_styling_sub_id),
           view_stack(view_stack),
+          lexicon(LEXICON_DB_PATH),
           token_view(std::make_unique<TokenView>(
               reader,
               seek_address,
@@ -141,6 +151,13 @@ ReaderView::ReaderView(
             state->on_change_address(address);
         }
     });
+
+    // Open the dictionary popup when the word-select highlight is confirmed with A.
+    state->token_view->set_on_open_word([this](const std::string &surface) {
+        state->view_stack.push(std::make_shared<WordMeaningView>(
+            surface, state->lexicon, state->sys_styling
+        ));
+    });
 }
 
 ReaderView::~ReaderView()
@@ -184,6 +201,15 @@ bool ReaderView::is_done()
 
 void ReaderView::on_keypress(SDLKey key)
 {
+    // While word-select owns the keyboard, route everything (including A/B) to it, so A
+    // opens the meaning popup and B exits the mode instead of toggling the title bar /
+    // closing the book.
+    if (state->token_view->is_word_select_active())
+    {
+        state->token_view->on_keypress(key);
+        return;
+    }
+
     if (key == SW_BTN_B)
     {
         state->is_done = true;

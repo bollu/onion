@@ -69,6 +69,14 @@ HB_DIR      ?= ../../third-party/harfbuzz/src
 HB_OBJECT   := $(OBJ_DIR)/harfbuzz_amalgam.o
 HB_CXXFLAGS := -DHAVE_FREETYPE=1 -DHB_NO_MT -I$(HB_DIR) $(FREETYPE_CFLAGS)
 
+# SQLite backs the dictionary lookups. Like HarfBuzz, it is compiled from its single-file
+# amalgamation (third-party/sqlite/sqlite3.c) on every platform: one translation unit, no
+# external dependency to bundle, identical on macOS host / Linux container / ARM device.
+# Fetch it with tools/fetch_sqlite.sh (third-party/sqlite/ is gitignored). Overridable for
+# the same reason HB_DIR is.
+SQLITE_DIR    ?= third-party/sqlite
+SQLITE_OBJECT := $(OBJ_DIR)/sqlite3_amalgam.o
+
 # On the device everything lives at the default prefix, so plain -l flags resolve. On a
 # desktop the libraries sit under an arbitrary prefix (e.g. Homebrew), so ask
 # pkg-config for both the search paths and the include dirs.
@@ -94,14 +102,14 @@ endif
 # free to drift out of step with it. Safe to add wholesale -- bebook's own headers
 # live under util/ and sys/, Onion's under utils/ and system/, so nothing shadows.
 ONION_COMMON := ../common
-INCLUDE  := -Isrc -I$(ONION_COMMON) $(DEP_CFLAGS) -I$(HB_DIR) $(FREETYPE_CFLAGS) $(SDL_CFLAGS)
+INCLUDE  := -Isrc -I$(ONION_COMMON) $(DEP_CFLAGS) -I$(HB_DIR) -I$(SQLITE_DIR) $(FREETYPE_CFLAGS) $(SDL_CFLAGS)
 
 # Appended only once every pkg-config-derived variable above exists. LDFLAGS is a :=
 # variable, so referencing them any earlier would silently expand to nothing.
 LDFLAGS := $(LDFLAGS) $(SDL_LIBS) $(FREETYPE_LIBS) $(DEP_LIBS)
 
 ROTOZOOM_SRC := src/extern/rotozoom/SDL_rotozoom.c
-COMMON_SRC   := $(filter-out src/reader/main.cpp, $(wildcard src/filetypes/*.cpp src/filetypes/txt/*.cpp src/filetypes/epub/*.cpp src/reader/*.cpp src/reader/views/*.cpp src/reader/views/token_view/*.cpp src/sys/*.cpp src/text/*.cpp src/util/*.cpp src/doc_api/*.cpp src/extern/hash-library/*.cpp))
+COMMON_SRC   := $(filter-out src/reader/main.cpp, $(wildcard src/filetypes/*.cpp src/filetypes/txt/*.cpp src/filetypes/epub/*.cpp src/reader/*.cpp src/reader/views/*.cpp src/reader/views/token_view/*.cpp src/sys/*.cpp src/text/*.cpp src/util/*.cpp src/doc_api/*.cpp src/lexicon/*.cpp src/extern/hash-library/*.cpp))
 READER_SRC   := $(COMMON_SRC) src/reader/main.cpp
 # text_specimen.cpp has its own main() and is built as a separate target.
 SANDBOX_SRC  := $(COMMON_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wildcard src/sandbox/*.cpp))
@@ -112,16 +120,16 @@ SANDBOX_SRC  := $(COMMON_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wild
 # uses; without it the link fails on SDL_Deleter::operator().
 SPECIMEN_SRC     := src/sandbox/text_specimen.cpp $(wildcard src/text/*.cpp) src/util/sdl_pointer.cpp
 SPECIMEN_OBJECTS := $(SPECIMEN_SRC:%.cpp=$(OBJ_DIR)/%.o) $(HB_OBJECT)
-TEST_SRC     := $(COMMON_SRC) $(wildcard src/sys/tests/*.cpp src/reader/tests/*.cpp src/filetypes/epub/tests/*.cpp src/util/tests/*.cpp src/doc_api/tests/*.cpp src/text/tests/*.cpp)
+TEST_SRC     := $(COMMON_SRC) $(wildcard src/sys/tests/*.cpp src/reader/tests/*.cpp src/filetypes/epub/tests/*.cpp src/util/tests/*.cpp src/doc_api/tests/*.cpp src/text/tests/*.cpp src/lexicon/tests/*.cpp)
 
 APP_READER_TARGET := bebook
 APP_SANDBOX_TARGET := sandbox
 APP_TEST_TARGET := test
 
 ROTOZOOM_OBJECT := $(OBJ_DIR)/SDL_rotozoom.o
-READER_OBJECTS  := $(READER_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT)
-SANDBOX_OBJECTS := $(SANDBOX_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT)
-TEST_OBJECTS    := $(TEST_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT)
+READER_OBJECTS  := $(READER_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
+SANDBOX_OBJECTS := $(SANDBOX_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
+TEST_OBJECTS    := $(TEST_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
 
 DEPENDENCIES := \
 	    $(READER_OBJECTS:.o=.d)  \
@@ -148,6 +156,19 @@ $(HB_OBJECT): $(HB_DIR)/harfbuzz.cc
 	fi
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(HB_CXXFLAGS) -c $< -o $@
+
+# SQLite amalgamation: a C translation unit, so compiled with cc, not the C++ driver. No
+# WARNFLAGS (-pedantic-errors would reject it) and no -MMD (its dependency list is fixed).
+# The defines trim the build to what a read-only, single-threaded, embedded lookup needs.
+SQLITE_DEFINES := -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
+                  -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_TEMP_STORE=3 -DSQLITE_OMIT_DEPRECATED
+$(SQLITE_OBJECT): $(SQLITE_DIR)/sqlite3.c
+	@if [ ! -f "$<" ]; then \
+		echo "sqlite amalgamation missing at $(SQLITE_DIR). Run: tools/fetch_sqlite.sh"; \
+		exit 1; \
+	fi
+	@mkdir -p $(@D)
+	$(CROSS_COMPILE)cc $(CPPFLAGS) -O2 $(SQLITE_DEFINES) -I$(SQLITE_DIR) -c $< -o $@
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)

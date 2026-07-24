@@ -20,6 +20,19 @@ class TokenView: public View
 
     void scroll(int num_lines);
 
+    // Word-selection ("dictionary picker") mode. Entered with a shoulder button while
+    // reading; a highlight moves word by word and A opens the selected word's meaning.
+    void ws_enter();
+    void ws_exit();
+    void ws_handle_key(SDLKey key);
+    // Move the highlight by whole words (dir -1/+1), crossing lines and scrolling as
+    // needed. `land_last` picks which word to land on when stepping onto a new line.
+    void ws_move_word(int dir);
+    void ws_move_line(int dir);
+    void ws_open_selected();
+    // Scroll by `n` lines and report how many lines actually moved (0 at book ends).
+    int scroll_reporting(int n);
+
 public:
     TokenView(
         std::shared_ptr<DocReader> reader,
@@ -41,6 +54,14 @@ public:
     void set_title_progress(int percent);
 
     void set_on_scroll(std::function<void(DocAddr)> callback);
+
+    // True while the word-selection highlight is active. The owning view should route all
+    // input here (including A/B) while this holds, so the mode owns the keyboard.
+    bool is_word_select_active() const;
+
+    // Called with the selected surface form when the user presses A on a highlighted
+    // word. The owner uses this to open the meaning popup. The mode stays active.
+    void set_on_open_word(std::function<void(const std::string &)> callback);
 };
 
 #endif

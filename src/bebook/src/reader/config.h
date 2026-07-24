@@ -13,6 +13,10 @@
 #define DEFAULT_FONT_NAME   "resources/fonts/Charis-Regular.ttf"
 #define SYSTEM_FONT         "resources/fonts/DejaVuSansMono.ttf"
 
+// Prebuilt read-only Italian lexicon (built by tools/build_lexicon.py). Resolves relative
+// to bebook's working directory, the same convention as the font paths above.
+#define LEXICON_DB_PATH     "resources/italian.sqlite"
+
 #define MIN_FONT_SIZE      18
 #define MAX_FONT_SIZE      40
 #define DEFAULT_FONT_SIZE  26
