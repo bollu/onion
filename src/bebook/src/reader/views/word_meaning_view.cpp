@@ -124,10 +124,19 @@ void WordMeaningView::rebuild_tabs()
         return;
     }
 
-    tabs.push_back({ TabKind::ItEn, "It \xE2\x86\x92 En", -1 });  // ->
-    tabs.push_back({ TabKind::ItIt, "It \xE2\x86\x92 It", -1 });
-
     const Analysis &a = analyses[active_analysis];
+
+    // Only offer a definition tab that has content: the shipped build has no It->It glosses
+    // yet, so an always-present "It -> It" tab would be a permanently empty dead end.
+    if (!a.it_en.empty())
+    {
+        tabs.push_back({ TabKind::ItEn, "It \xE2\x86\x92 En", -1 });  // ->
+    }
+    if (!a.it_it.empty())
+    {
+        tabs.push_back({ TabKind::ItIt, "It \xE2\x86\x92 It", -1 });
+    }
+
     if (a.lemma.is_verb())
     {
         for (int i = 0; i < static_cast<int>(a.conj.size()); ++i)
@@ -200,7 +209,7 @@ void WordMeaningView::move_tab(int dir)
         return;
     }
     const int n = static_cast<int>(tabs.size());
-    active_tab = (active_tab + dir % n + n) % n;
+    active_tab = ((active_tab + dir) % n + n) % n;
     body_scroll = 0;
     _needs_render = true;
 }
@@ -381,8 +390,19 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     const int body_visible = std::max(1, (body_bottom - body_top) / line_h);
 
     const int scrollbar_w = 4;
-    const int body_w = cw - scrollbar_w - 6;  // leave room for the scrollbar gutter
-    const int pron_col = 92;                  // conjugation pronoun column width
+    const int scrollbar_gutter = 6;
+    const int body_w = cw - scrollbar_w - scrollbar_gutter;
+
+    // Conjugation pronoun column: the widest pronoun label plus a gutter, so forms line up
+    // and nothing clips at large font sizes (a fixed width would).
+    int pron_col = 0;
+    for (const char *label : lexicon::PERSON_LABELS)
+    {
+        int w = 0;
+        text::text_size(font, label, &w, nullptr);
+        pron_col = std::max(pron_col, w);
+    }
+    pron_col += PAD_X;
 
     // Flatten body items into physical lines: prose paragraphs wrap; conjugation and blank
     // items are one line each. `item` indexes back into `items` (not a pointer) so nothing

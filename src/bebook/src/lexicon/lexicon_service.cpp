@@ -205,17 +205,21 @@ std::vector<LemmaEntry> LexiconService::lemmatize(const std::string &surface) co
     return out;
 }
 
-std::vector<Sense> LexiconService::lookup_it_en(const std::string &lemma) const
+namespace
+{
+// Senses for `lemma` from a definitions table ("defs_it_en" / "defs_it_it"). `table` is a
+// fixed internal identifier, not user input.
+std::vector<Sense> lookup_defs(sqlite3 *db, const char *table, const std::string &lemma)
 {
     std::vector<Sense> out;
-    static const char *sql =
-        "SELECT sense_no, gloss FROM defs_it_en WHERE lemma = ? ORDER BY sense_no";
-    if (!impl->db)
+    if (!db)
     {
         return out;
     }
+    const std::string sql =
+        std::string("SELECT sense_no, gloss FROM ") + table + " WHERE lemma = ? ORDER BY sense_no";
     sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
     {
         return out;
     }
@@ -227,28 +231,16 @@ std::vector<Sense> LexiconService::lookup_it_en(const std::string &lemma) const
     sqlite3_finalize(stmt);
     return out;
 }
+} // namespace
+
+std::vector<Sense> LexiconService::lookup_it_en(const std::string &lemma) const
+{
+    return lookup_defs(impl->db, "defs_it_en", lemma);
+}
 
 std::vector<Sense> LexiconService::lookup_it_it(const std::string &lemma) const
 {
-    std::vector<Sense> out;
-    static const char *sql =
-        "SELECT sense_no, gloss FROM defs_it_it WHERE lemma = ? ORDER BY sense_no";
-    if (!impl->db)
-    {
-        return out;
-    }
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK)
-    {
-        return out;
-    }
-    sqlite3_bind_text(stmt, 1, lemma.c_str(), -1, SQLITE_TRANSIENT);
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
-        out.push_back({sqlite3_column_int(stmt, 0), column_text(stmt, 1)});
-    }
-    sqlite3_finalize(stmt);
-    return out;
+    return lookup_defs(impl->db, "defs_it_it", lemma);
 }
 
 std::vector<ConjTable> LexiconService::conjugations(const std::string &lemma) const

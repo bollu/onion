@@ -150,8 +150,10 @@ DICT := resources/italian.sqlite
 $(DICT): $(DICT).xz
 	@if command -v xz >/dev/null 2>&1; then \
 		xz -dkf $< ; \
-	else \
+	elif command -v python3 >/dev/null 2>&1; then \
 		python3 -c "import lzma,shutil,sys; shutil.copyfileobj(lzma.open(sys.argv[1]), open(sys.argv[2],'wb'))" $< $@ ; \
+	else \
+		echo "error: need 'xz' or 'python3' to unpack $< -> $@" >&2 ; exit 1 ; \
 	fi
 
 $(ROTOZOOM_OBJECT): $(ROTOZOOM_SRC)

@@ -414,16 +414,15 @@ def add_verb(db, lemma, en, it, tables):
         for person in range(6):
             form = forms[person]
             db.execute("INSERT INTO conj VALUES (?,?,?,?)", (lemma, tense, person, form))
-            # Register each simple-tense form for lemmatization. Compound
-            # (passato_prossimo) forms are multi-word; index only their first token so a
-            # selected auxiliary still resolves, and skip agreement slashes.
+            # Register the simple-tense forms for lemmatization (they are single words).
+            # Compound tenses (passato_prossimo) are not in TENSE_FEAT and so are left out --
+            # their auxiliary resolves via its own entry.
             if tense in TENSE_FEAT:
                 feat = f"{TENSE_FEAT[tense]}+{PERSON_FEAT[person]}"
-                for token in form.split():
-                    db.execute(
-                        "INSERT INTO forms VALUES (?,?,?,?,?)",
-                        (norm(token), lemma, "VER", feat, fold(token)),
-                    )
+                db.execute(
+                    "INSERT INTO forms VALUES (?,?,?,?,?)",
+                    (norm(form), lemma, "VER", feat, fold(form)),
+                )
 
 
 def add_word(db, lemma, pos, en, it):
@@ -733,7 +732,7 @@ def _flush_word(db, word, entries, seen_defs, counters):
             if cur is None or penalty < cur[0]:
                 slots[slot] = (penalty, strip_stress(raw))
 
-    for (tense, idx), (_pen, form) in slots.items():
+    for (tense, idx), (_, form) in slots.items():
         db.execute("INSERT INTO conj VALUES (?,?,?,?)", (lemma, tense, idx, form))
         counters["conj"] += 1
 
@@ -781,7 +780,6 @@ def ingest_kaikki(out_path, jsonl_path, limit=None):
             if w != cur_word:
                 flush()
                 cur_word, group = w, []
-                seen_defs = set() if False else seen_defs  # defs deduped globally by (lemma,gloss)
             group.append(e)
         flush()
 
