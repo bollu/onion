@@ -253,7 +253,6 @@ int main(int argc, char **argv)
 
     // Timing
     Timer idle_timer;
-    Timer game_switcher_preview_timer;
     FPSLimiter limit_fps(TARGET_FPS);
     const uint32_t avg_loop_time = 1000 / TARGET_FPS;
 
@@ -389,17 +388,6 @@ int main(int argc, char **argv)
             {
                 SDL_BlitSurface(screen, NULL, video, NULL);
                 SDL_Flip(video);
-
-                // Keep the GameSwitcher tile current: keymon can suspend bebook behind the
-                // switcher without it exiting, and the switcher reads the preview PNG from
-                // disk, so a preview written only on exit would be stale or missing. Throttled
-                // because composing the tile (cover + scaled page) is not free.
-                if (requested_book_path &&
-                    game_switcher_preview_timer.elapsed_ms() >= 3000)
-                {
-                    write_rom_screen(screen, *requested_book_path);
-                    game_switcher_preview_timer.reset();
-                }
             }
         }
 
