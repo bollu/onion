@@ -22,6 +22,9 @@ namespace
 
 // Content box: near-full-window, leaving the modal border + its padding as the margin.
 constexpr int BOX_MARGIN = 10;
+// Inner padding between the box border and the content, for a bit of breathing room.
+constexpr int PAD_X = 16;
+constexpr int PAD_Y = 12;
 
 // Short tab label for a conjugation tense. The full display_name ("Indicativo Presente")
 // is too wide for the cycler; these keep the strip compact.
@@ -139,12 +142,13 @@ void WordMeaningView::rebuild_tabs()
     }
 }
 
-std::vector<std::string> WordMeaningView::body_paragraphs() const
+std::vector<WordMeaningView::BodyItem> WordMeaningView::body_items() const
 {
-    std::vector<std::string> out;
+    using Kind = BodyItem::Kind;
+    std::vector<BodyItem> out;
     if (active_analysis < 0 || tabs.empty())
     {
-        out.push_back("Nessuna voce.");
+        out.push_back({ Kind::Prose, "Nessuna voce.", "" });
         return out;
     }
 
@@ -154,16 +158,16 @@ std::vector<std::string> WordMeaningView::body_paragraphs() const
     auto add_senses = [&out](const std::vector<lexicon::Sense> &senses, const char *empty_msg) {
         if (senses.empty())
         {
-            out.push_back(empty_msg);
+            out.push_back({ Kind::Prose, empty_msg, "" });
             return;
         }
         int n = 1;
         for (const auto &s : senses)
         {
-            out.push_back(std::to_string(n++) + ". " + s.gloss);
-            out.push_back("");  // blank line between senses
+            out.push_back({ Kind::Prose, std::to_string(n++) + ".  " + s.gloss, "" });
+            out.push_back({ Kind::Blank, "", "" });
         }
-        if (!out.empty() && out.back().empty())
+        if (!out.empty() && out.back().kind == Kind::Blank)
         {
             out.pop_back();
         }
@@ -182,7 +186,7 @@ std::vector<std::string> WordMeaningView::body_paragraphs() const
             const lexicon::ConjTable &t = a.conj[tab.conj_index];
             for (int i = 0; i < 6; ++i)
             {
-                out.push_back(std::string(lexicon::PERSON_LABELS[i]) + "  " + t.forms[i]);
+                out.push_back({ Kind::Conjugation, lexicon::PERSON_LABELS[i], t.forms[i] });
             }
             break;
         }
@@ -225,143 +229,194 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     const int box_h = SCREEN_HEIGHT - 2 * BOX_MARGIN - 2 * DIALOG_PADDING;
     draw_modal_border(box_w, box_h, theme, dest);
 
-    const int x0 = SCREEN_WIDTH / 2 - box_w / 2;
-    const int y0 = SCREEN_HEIGHT / 2 - box_h / 2;
-    const int x1 = x0 + box_w;
+    const int box_x = SCREEN_WIDTH / 2 - box_w / 2;
+    const int box_y = SCREEN_HEIGHT / 2 - box_h / 2;
 
-    // Clip every glyph to the content box so a wrapped gloss stops at the border.
+    // Inner content column, inset from the box border for breathing room.
+    const int cx0 = box_x + PAD_X;
+    const int cx1 = box_x + box_w - PAD_X;
+    const int cw = cx1 - cx0;
+
     SDL_Rect content_clip = {
-        static_cast<Sint16>(x0), static_cast<Sint16>(y0),
+        static_cast<Sint16>(box_x), static_cast<Sint16>(box_y),
         static_cast<Uint16>(box_w), static_cast<Uint16>(box_h)
     };
     SDL_SetClipRect(dest, &content_clip);
 
-    auto styled_of = [&](const std::string &s) {
+    auto map = [&](const SDL_Color &c) { return SDL_MapRGB(dest->format, c.r, c.g, c.b); };
+    const Uint32 rule_color = map(theme.secondary_text);
+
+    auto styled_of = [&](const std::string &s, const std::vector<text::StyleRun> *runs) {
         text::StyledText st;
         st.text = s.c_str();
         st.length = static_cast<uint32_t>(s.size());
-        st.runs = nullptr;
+        st.runs = runs;
         st.family = font->family;
         st.size_px = font->size_px;
         return st;
     };
 
-    // Lay out `s` as a centred, hyphenated paragraph and draw it from y_top. Returns the y
-    // below it. An empty string is a blank line. This is the shared reader text engine, so
-    // wrapping/hyphenation match the page exactly.
-    auto draw_para = [&](const std::string &s, int y_top, SDL_Color fg) -> int {
+    // Left-aligned, hyphenated, wrapped paragraph at (x, y_top) within `width`. Returns the
+    // y below it. Empty text is a blank line. Goes through the shared reader text engine.
+    auto draw_prose = [&](const std::string &s, const std::vector<text::StyleRun> *runs,
+                          int x, int y_top, int width, SDL_Color fg) -> int {
         if (s.empty())
         {
             return y_top + line_h;
         }
-        text::StyledText st = styled_of(s);
-        auto lines = text::layout_paragraph(st, font, box_w, text::Align::Center, true);
+        text::StyledText st = styled_of(s, runs);
+        auto lines = text::layout_paragraph(st, font, width, text::Align::Left, true);
         int yy = y_top;
         for (const auto &ln : lines)
         {
-            text::draw_line_aligned(
-                dest, st, ln, x0, box_w, yy + ascent,
-                text::Align::Center, fg, theme.background, &content_clip
-            );
+            text::draw_line_aligned(dest, st, ln, x, width, yy + ascent,
+                                    text::Align::Left, fg, theme.background, &content_clip);
             yy += line_h;
         }
         return yy;
     };
 
-    int y = y0;
+    auto rule = [&](int ry) {
+        SDL_Rect r = { static_cast<Sint16>(cx0), static_cast<Sint16>(ry),
+                       static_cast<Uint16>(cw), 1 };
+        SDL_FillRect(dest, &r, rule_color);
+    };
 
-    // Header line 1: surface -> lemma, with the first English gloss if there is one.
+    int y = box_y + PAD_Y;
+
+    // --- Header: surface -> lemma (lemma bold), quick gloss, morphology ---------------
     {
-        std::string head = surface;
-        if (active_analysis >= 0)
+        std::string lemma = active_analysis >= 0 ? analyses[active_analysis].lemma.lemma
+                                                 : std::string();
+        std::string head;
+        std::vector<text::StyleRun> runs;
+        if (lemma.empty())
         {
-            const Analysis &a = analyses[active_analysis];
-            head += " \xE2\x86\x92 " + a.lemma.lemma;  // ->
-            if (!a.it_en.empty())
-            {
-                head += "  (" + a.it_en.front().gloss + ")";
-            }
+            head = surface;
         }
-        y = draw_para(head, y, theme.main_text);
+        else if (to_lower(surface) == to_lower(lemma))
+        {
+            head = lemma;  // the selection already is the lemma
+            runs.push_back({ 0u, static_cast<uint32_t>(lemma.size()), text::Style::Bold });
+        }
+        else
+        {
+            head = surface + " \xE2\x86\x92 " + lemma;  // ->
+            runs.push_back({ static_cast<uint32_t>(head.size() - lemma.size()),
+                             static_cast<uint32_t>(lemma.size()), text::Style::Bold });
+        }
+        y = draw_prose(head, &runs, cx0, y, cw, theme.main_text);
     }
 
-    // Header line 2: morphology of the active analysis, plus an ambiguity marker.
+    if (active_analysis >= 0 && !analyses[active_analysis].it_en.empty())
     {
-        std::string sub;
-        if (active_analysis >= 0)
-        {
-            sub = analyses[active_analysis].lemma.morphology_human;
-        }
+        y = draw_prose(analyses[active_analysis].it_en.front().gloss, nullptr,
+                       cx0, y, cw, theme.secondary_text);
+    }
+
+    if (active_analysis >= 0)
+    {
+        const int morph_y = y;
+        const std::string &morph = analyses[active_analysis].lemma.morphology_human;
+        y = morph.empty() ? y + line_h
+                          : draw_prose(morph, nullptr, cx0, y, cw, theme.secondary_text);
         if (analyses.size() > 1)
         {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "  \xE2\x80\xB9%d/%zu\xE2\x80\xBA",  // <k/n>
+            char buf[24];
+            snprintf(buf, sizeof(buf), "\xE2\x80\xB9%d/%zu\xE2\x80\xBA",  // <k/n>
                      active_analysis + 1, analyses.size());
-            sub += buf;
-        }
-        if (!sub.empty())
-        {
-            y = draw_para(sub, y, theme.secondary_text);
+            int w = 0;
+            text::text_size(font, buf, &w, nullptr);
+            blit_line(dest, font, buf, cx1 - w, morph_y, theme.secondary_text, theme.background);
         }
     }
-    y += line_h / 3;
 
-    // Tab cycler: "◂  Title  ▸" centred as a group (title highlighted), with the position
-    // readout at the right edge.
+    y += PAD_Y / 2;
+    rule(y);
+    y += 1 + PAD_Y / 2;
+
+    // --- Tab strip: "◂ [Title] ▸" centred, active title in a filled pill ---------------
     if (!tabs.empty())
     {
-        const std::string arrow_l = "\xE2\x97\x82  ";  // ◂
-        const std::string arrow_r = "  \xE2\x96\xB8";  // ▸
+        const std::string arrow_l = "\xC2\xAB";  // «  (Latin-1: Charis has it; ◂/▸ tofu)
+        const std::string arrow_r = "\xC2\xBB";  // »
         const std::string &title = tabs[active_tab].title;
+        const int pill_pad = 10;
+        const int arrow_gap = 10;
 
-        int wl = 0, wt = 0, wr = 0;
-        text::text_size(font, arrow_l.c_str(), &wl, nullptr);
+        int wa = 0, wt = 0;
+        text::text_size(font, arrow_l.c_str(), &wa, nullptr);
         text::text_size(font, title.c_str(), &wt, nullptr);
-        text::text_size(font, arrow_r.c_str(), &wr, nullptr);
+        const int pill_w = wt + 2 * pill_pad;
+        const int total = wa + arrow_gap + pill_w + arrow_gap + wa;
 
-        int tx = x0 + (box_w - (wl + wt + wr)) / 2;
-        tx += blit_line(dest, font, arrow_l, tx, y, theme.secondary_text, theme.background);
-        tx += blit_line(dest, font, title, tx, y, theme.highlight_background, theme.background);
-        blit_line(dest, font, arrow_r, tx, y, theme.secondary_text, theme.background);
+        int gx = cx0 + (cw - total) / 2;
+        blit_line(dest, font, arrow_l, gx, y, theme.secondary_text, theme.background);
+        gx += wa + arrow_gap;
+
+        SDL_Rect pill = { static_cast<Sint16>(gx), static_cast<Sint16>(y - 1),
+                          static_cast<Uint16>(pill_w), static_cast<Uint16>(line_h + 2) };
+        SDL_FillRect(dest, &pill, map(theme.highlight_background));
+        blit_line(dest, font, title, gx + pill_pad, y, theme.highlight_text, theme.highlight_background);
+        gx += pill_w + arrow_gap;
+
+        blit_line(dest, font, arrow_r, gx, y, theme.secondary_text, theme.background);
 
         char pos[24];
-        snprintf(pos, sizeof(pos), "(%d/%zu)", active_tab + 1, tabs.size());
+        snprintf(pos, sizeof(pos), "%d/%zu", active_tab + 1, tabs.size());
         int pw = 0;
         text::text_size(font, pos, &pw, nullptr);
-        blit_line(dest, font, pos, x1 - pw, y, theme.secondary_text, theme.background);
+        blit_line(dest, font, pos, cx1 - pw, y, theme.secondary_text, theme.background);
     }
-    y += line_h + line_h / 3;
+    y += line_h;
 
-    // Body: the active tab's paragraphs, laid out centred and hyphenated, scrolled by
-    // physical line. The last row is reserved for the hint bar.
-    const int hint_y = y0 + box_h - line_h;
+    y += PAD_Y / 2;
+    rule(y);
+    y += 1 + PAD_Y / 2;
+
+    // --- Body -------------------------------------------------------------------------
+    const int hint_y = box_y + box_h - PAD_Y - line_h;
+    const int lower_rule_y = hint_y - PAD_Y / 2;
     const int body_top = y;
-    const int body_visible = std::max(1, (hint_y - body_top) / line_h);
+    const int body_bottom = lower_rule_y - PAD_Y / 2;
+    const int body_visible = std::max(1, (body_bottom - body_top) / line_h);
 
-    const std::vector<std::string> paras = body_paragraphs();
-    std::vector<std::vector<text::Line>> layouts(paras.size());
-    std::vector<std::pair<int, int>> phys;  // (paragraph index, line index; -1 == blank)
-    for (int i = 0; i < static_cast<int>(paras.size()); ++i)
+    const int scrollbar_w = 4;
+    const int body_w = cw - scrollbar_w - 6;  // leave room for the scrollbar gutter
+    const int pron_col = 92;                  // conjugation pronoun column width
+
+    // Flatten body items into physical lines: prose paragraphs wrap; conjugation and blank
+    // items are one line each.
+    const std::vector<BodyItem> items = body_items();
+    std::vector<std::string> paras;                        // prose text, kept alive for draw
+    std::vector<std::vector<text::Line>> layouts;
+    struct Phys { int type; int para; int line; const BodyItem *item; };  // 0 prose,1 conj,2 blank
+    std::vector<Phys> phys;
+    for (const auto &it : items)
     {
-        if (paras[i].empty())
+        if (it.kind == BodyItem::Kind::Conjugation)
         {
-            phys.push_back({ i, -1 });
-            continue;
+            phys.push_back({ 1, -1, -1, &it });
         }
-        text::StyledText st = styled_of(paras[i]);
-        layouts[i] = text::layout_paragraph(st, font, box_w, text::Align::Center, true);
-        if (layouts[i].empty())
+        else if (it.kind == BodyItem::Kind::Blank || it.a.empty())
         {
-            phys.push_back({ i, -1 });
-            continue;
+            phys.push_back({ 2, -1, -1, &it });
         }
-        for (int k = 0; k < static_cast<int>(layouts[i].size()); ++k)
+        else
         {
-            phys.push_back({ i, k });
+            const int pidx = static_cast<int>(paras.size());
+            paras.push_back(it.a);
+            text::StyledText st = styled_of(paras.back(), nullptr);
+            layouts.push_back(text::layout_paragraph(st, font, body_w, text::Align::Left, true));
+            for (int k = 0; k < static_cast<int>(layouts.back().size()); ++k)
+            {
+                phys.push_back({ 0, pidx, k, &it });
+            }
         }
     }
 
-    const int max_scroll = std::max(0, static_cast<int>(phys.size()) - body_visible);
+    const int total_lines = static_cast<int>(phys.size());
+    const int max_scroll = std::max(0, total_lines - body_visible);
     if (body_scroll > max_scroll)
     {
         body_scroll = max_scroll;
@@ -370,41 +425,50 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     for (int r = 0; r < body_visible; ++r)
     {
         const int idx = body_scroll + r;
-        if (idx >= static_cast<int>(phys.size()))
+        if (idx >= total_lines)
         {
             break;
         }
-        const int pi = phys[idx].first;
-        const int li = phys[idx].second;
-        if (li < 0)
+        const Phys &p = phys[idx];
+        const int ry = body_top + r * line_h;
+        if (p.type == 2)
         {
-            continue;  // blank separator
+            continue;
         }
-        text::StyledText st = styled_of(paras[pi]);
-        text::draw_line_aligned(
-            dest, st, layouts[pi][li], x0, box_w, body_top + r * line_h + ascent,
-            text::Align::Center, theme.main_text, theme.background, &content_clip
-        );
+        if (p.type == 1)
+        {
+            blit_line(dest, font, p.item->a, cx0, ry, theme.secondary_text, theme.background);
+            blit_line(dest, font, p.item->b, cx0 + pron_col, ry, theme.main_text, theme.background);
+        }
+        else
+        {
+            text::StyledText st = styled_of(paras[p.para], nullptr);
+            text::draw_line_aligned(dest, st, layouts[p.para][p.line], cx0, body_w,
+                                    ry + ascent, text::Align::Left,
+                                    theme.main_text, theme.background, &content_clip);
+        }
     }
 
-    // "more above/below" cues at the right edge when the body overflows.
-    if (body_scroll > 0)
+    // Slim scrollbar (thumb only) at the right gutter when the body overflows.
+    if (total_lines > body_visible)
     {
-        blit_line(dest, font, "\xE2\x96\xB4", x1 - 12, body_top, theme.secondary_text, theme.background);
-    }
-    if (body_scroll < max_scroll)
-    {
-        blit_line(dest, font, "\xE2\x96\xBE", x1 - 12, hint_y - line_h, theme.secondary_text, theme.background);
+        const int track_h = body_visible * line_h;
+        const int thumb_h = std::max(line_h, track_h * body_visible / total_lines);
+        const int thumb_y = body_top + (track_h - thumb_h) * body_scroll / max_scroll;
+        SDL_Rect thumb = { static_cast<Sint16>(cx1 - scrollbar_w), static_cast<Sint16>(thumb_y),
+                           static_cast<Uint16>(scrollbar_w), static_cast<Uint16>(thumb_h) };
+        SDL_FillRect(dest, &thumb, map(theme.secondary_text));
     }
 
-    // Hint bar, centred.
+    // --- Hint bar ---------------------------------------------------------------------
+    rule(lower_rule_y);
     {
         std::string hint = "L/R schede   \xE2\x86\x95 scorri   B indietro";
         if (analyses.size() > 1)
         {
             hint += "   X analisi";
         }
-        draw_para(hint, hint_y, theme.secondary_text);
+        draw_prose(hint, nullptr, cx0, hint_y, cw, theme.secondary_text);
     }
 
     SDL_SetClipRect(dest, nullptr);

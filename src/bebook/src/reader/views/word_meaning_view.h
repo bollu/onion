@@ -53,10 +53,18 @@ private:
     };
 
     void rebuild_tabs();
-    // The active tab's body as centred paragraphs: one per gloss (numbered), one per
-    // conjugation row ("io  amo"), an empty string as a blank separator. render() lays
-    // each out with the shared text engine so long glosses wrap and hyphenate.
-    std::vector<std::string> body_paragraphs() const;
+
+    // One block of the active tab's body. A `prose` item is a paragraph (a numbered gloss or
+    // a message) that render() wraps + hyphenates and left-aligns. A `conjugation` item is a
+    // (pronoun, form) pair drawn as two aligned columns. A `blank` item is a separator line.
+    struct BodyItem
+    {
+        enum class Kind { Prose, Conjugation, Blank } kind;
+        std::string a;  // prose text, or the pronoun
+        std::string b;  // the conjugated form
+    };
+    std::vector<BodyItem> body_items() const;
+
     void move_tab(int dir);
     void scroll_body(int dir);
 

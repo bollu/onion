@@ -16,6 +16,7 @@ void display_epub(std::string path);
 void display_xhtml(std::string path);
 void bulk_load_test(std::string path);
 void dump_cover(const std::string &book_path, const std::string &out_path);
+void dump_meaning(const std::string &word, const std::string &out_path, int tab_index);
 
 int main(int argc, char** argv)
 {
@@ -41,6 +42,10 @@ int main(int argc, char** argv)
         else if (mode == "cover" && argc > 3)
         {
             dump_cover(argv[2], argv[3]);
+        }
+        else if (mode == "meaning" && argc > 3)
+        {
+            dump_meaning(argv[2], argv[3], argc > 4 ? atoi(argv[4]) : 0);
         }
         else
         {
