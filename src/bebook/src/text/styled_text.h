@@ -2,6 +2,7 @@
 #define STYLED_TEXT_H_
 
 #include "./font.h"
+#include "./line_break.h"
 #include "./text_types.h"
 
 #include <SDL/SDL.h>
@@ -57,6 +58,45 @@ int draw_styled_line(
     bool trailing_hyphen,
     int x,
     int baseline_y,
+    SDL_Color fg,
+    SDL_Color bg,
+    const SDL_Rect *clip = nullptr
+);
+
+// Horizontal alignment for a laid-out paragraph.
+enum class Align { Left, Center, Justify };
+
+// Break a paragraph (the bytes/style in `st`) into lines at `width` px, hyphenating if
+// asked. Justify leaves each non-final line stretched to `width` (target_width); Left and
+// Center leave lines ragged (target_width == natural_width). This is the shared layout
+// glue the reader page and the dictionary popup both use, so wrapping/hyphenation behave
+// identically everywhere.
+std::vector<Line> layout_paragraph(
+    const StyledText &st,
+    const Font *font,
+    int width,
+    Align align,
+    bool hyphenate,
+    Fixed first_line_indent = 0
+);
+
+// Left pen-x for a line of natural width `natural` (26.6) set within [left_x, left_x+width]
+// under `align`. Center places it in the middle; Left and Justify pen at left_x. Exposed so
+// the alignment math is unit-testable without a font.
+int aligned_left_x(Align align, int left_x, int width, Fixed natural);
+
+// Draw one laid-out line inside [left_x, left_x + width] at glyph baseline `baseline_y`,
+// applying `align`: Left pens at left_x; Center pens at left_x + (width - natural)/2;
+// Justify opens the inter-word gaps to target_width. Thin wrapper over draw_styled_line;
+// returns the x it ended at.
+int draw_line_aligned(
+    SDL_Surface *dst,
+    const StyledText &st,
+    const Line &ln,
+    int left_x,
+    int width,
+    int baseline_y,
+    Align align,
     SDL_Color fg,
     SDL_Color bg,
     const SDL_Rect *clip = nullptr

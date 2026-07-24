@@ -8,12 +8,14 @@
 #include "sys/screen.h"
 
 #include "text/font.h"
+#include "text/styled_text.h"
 
 #include "util/sdl_font_cache.h"
 #include "util/sdl_utils.h"
 #include "util/str_utils.h"
 
 #include <algorithm>
+#include <string>
 
 namespace
 {
@@ -33,8 +35,9 @@ std::string short_tense_label(const std::string &tense, const std::string &fallb
     return fallback;
 }
 
-// Blit one line of text at (x, baseline_top_y), returning its width. Empty text is a
-// no-op returning 0, matching how render_text_shaded guards.
+// Blit one short, unwrapped string at (x, top-y); returns its width. Used only for the
+// tab strip's multi-coloured pieces, where the middle is highlighted. Body text and the
+// header go through the wrapping/centering text engine instead.
 int blit_line(
     SDL_Surface *dest, text::Font *font, const std::string &s,
     int x, int y, SDL_Color fg, SDL_Color bg
@@ -136,49 +139,55 @@ void WordMeaningView::rebuild_tabs()
     }
 }
 
-std::vector<WordMeaningView::BodyRow> WordMeaningView::body_rows() const
+std::vector<std::string> WordMeaningView::body_paragraphs() const
 {
-    std::vector<BodyRow> rows;
+    std::vector<std::string> out;
     if (active_analysis < 0 || tabs.empty())
     {
-        rows.push_back({ "No dictionary entry.", "" });
-        return rows;
+        out.push_back("Nessuna voce.");
+        return out;
     }
 
     const Analysis &a = analyses[active_analysis];
     const Tab &tab = tabs[active_tab];
 
-    auto add_senses = [&rows](const std::vector<lexicon::Sense> &senses, const char *empty_msg) {
+    auto add_senses = [&out](const std::vector<lexicon::Sense> &senses, const char *empty_msg) {
         if (senses.empty())
         {
-            rows.push_back({ empty_msg, "" });
+            out.push_back(empty_msg);
             return;
         }
+        int n = 1;
         for (const auto &s : senses)
         {
-            rows.push_back({ "\xE2\x80\xA2 " + s.gloss, "" });  // bullet
+            out.push_back(std::to_string(n++) + ". " + s.gloss);
+            out.push_back("");  // blank line between senses
+        }
+        if (!out.empty() && out.back().empty())
+        {
+            out.pop_back();
         }
     };
 
     switch (tab.kind)
     {
         case TabKind::ItEn:
-            add_senses(a.it_en, "(no English definition)");
+            add_senses(a.it_en, "(nessuna definizione inglese)");
             break;
         case TabKind::ItIt:
-            add_senses(a.it_it, "(nessuna definizione)");
+            add_senses(a.it_it, "(nessuna definizione italiana)");
             break;
         case TabKind::Conj:
         {
             const lexicon::ConjTable &t = a.conj[tab.conj_index];
             for (int i = 0; i < 6; ++i)
             {
-                rows.push_back({ lexicon::PERSON_LABELS[i], t.forms[i] });
+                out.push_back(std::string(lexicon::PERSON_LABELS[i]) + "  " + t.forms[i]);
             }
             break;
         }
     }
-    return rows;
+    return out;
 }
 
 void WordMeaningView::move_tab(int dir)
@@ -210,6 +219,7 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     text::Font *font = styling.get_loaded_font();
     const auto &theme = styling.get_loaded_color_theme();
     const int line_h = text::font_line_height(font);
+    const int ascent = text::font_ascent(font);
 
     const int box_w = SCREEN_WIDTH - 2 * BOX_MARGIN - 2 * DIALOG_PADDING;
     const int box_h = SCREEN_HEIGHT - 2 * BOX_MARGIN - 2 * DIALOG_PADDING;
@@ -219,12 +229,44 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     const int y0 = SCREEN_HEIGHT / 2 - box_h / 2;
     const int x1 = x0 + box_w;
 
-    // Clip every glyph to the content box so a long gloss stops at the border.
+    // Clip every glyph to the content box so a wrapped gloss stops at the border.
     SDL_Rect content_clip = {
         static_cast<Sint16>(x0), static_cast<Sint16>(y0),
         static_cast<Uint16>(box_w), static_cast<Uint16>(box_h)
     };
     SDL_SetClipRect(dest, &content_clip);
+
+    auto styled_of = [&](const std::string &s) {
+        text::StyledText st;
+        st.text = s.c_str();
+        st.length = static_cast<uint32_t>(s.size());
+        st.runs = nullptr;
+        st.family = font->family;
+        st.size_px = font->size_px;
+        return st;
+    };
+
+    // Lay out `s` as a centred, hyphenated paragraph and draw it from y_top. Returns the y
+    // below it. An empty string is a blank line. This is the shared reader text engine, so
+    // wrapping/hyphenation match the page exactly.
+    auto draw_para = [&](const std::string &s, int y_top, SDL_Color fg) -> int {
+        if (s.empty())
+        {
+            return y_top + line_h;
+        }
+        text::StyledText st = styled_of(s);
+        auto lines = text::layout_paragraph(st, font, box_w, text::Align::Center, true);
+        int yy = y_top;
+        for (const auto &ln : lines)
+        {
+            text::draw_line_aligned(
+                dest, st, ln, x0, box_w, yy + ascent,
+                text::Align::Center, fg, theme.background, &content_clip
+            );
+            yy += line_h;
+        }
+        return yy;
+    };
 
     int y = y0;
 
@@ -240,8 +282,7 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
                 head += "  (" + a.it_en.front().gloss + ")";
             }
         }
-        blit_line(dest, font, head, x0, y, theme.main_text, theme.background);
-        y += line_h;
+        y = draw_para(head, y, theme.main_text);
     }
 
     // Header line 2: morphology of the active analysis, plus an ambiguity marker.
@@ -258,17 +299,30 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
                      active_analysis + 1, analyses.size());
             sub += buf;
         }
-        blit_line(dest, font, sub, x0, y, theme.secondary_text, theme.background);
-        y += line_h + line_h / 3;
+        if (!sub.empty())
+        {
+            y = draw_para(sub, y, theme.secondary_text);
+        }
     }
+    y += line_h / 3;
 
-    // Tab cycler: "<-  Title  ->   (i/n)", the title highlighted.
+    // Tab cycler: "◂  Title  ▸" centred as a group (title highlighted), with the position
+    // readout at the right edge.
     if (!tabs.empty())
     {
-        int tx = x0;
-        tx += blit_line(dest, font, "\xE2\x97\x82  ", tx, y, theme.secondary_text, theme.background); // left triangle
-        tx += blit_line(dest, font, tabs[active_tab].title, tx, y, theme.highlight_background, theme.background);
-        tx += blit_line(dest, font, "  \xE2\x96\xB8", tx, y, theme.secondary_text, theme.background);  // right triangle
+        const std::string arrow_l = "\xE2\x97\x82  ";  // ◂
+        const std::string arrow_r = "  \xE2\x96\xB8";  // ▸
+        const std::string &title = tabs[active_tab].title;
+
+        int wl = 0, wt = 0, wr = 0;
+        text::text_size(font, arrow_l.c_str(), &wl, nullptr);
+        text::text_size(font, title.c_str(), &wt, nullptr);
+        text::text_size(font, arrow_r.c_str(), &wr, nullptr);
+
+        int tx = x0 + (box_w - (wl + wt + wr)) / 2;
+        tx += blit_line(dest, font, arrow_l, tx, y, theme.secondary_text, theme.background);
+        tx += blit_line(dest, font, title, tx, y, theme.highlight_background, theme.background);
+        blit_line(dest, font, arrow_r, tx, y, theme.secondary_text, theme.background);
 
         char pos[24];
         snprintf(pos, sizeof(pos), "(%d/%zu)", active_tab + 1, tabs.size());
@@ -278,40 +332,62 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     }
     y += line_h + line_h / 3;
 
-    // Body: rows for the active tab, scrolled. The last line is reserved for the hint bar.
+    // Body: the active tab's paragraphs, laid out centred and hyphenated, scrolled by
+    // physical line. The last row is reserved for the hint bar.
     const int hint_y = y0 + box_h - line_h;
     const int body_top = y;
     const int body_visible = std::max(1, (hint_y - body_top) / line_h);
 
-    const std::vector<BodyRow> rows = body_rows();
-    const int max_scroll = std::max(0, static_cast<int>(rows.size()) - body_visible);
+    const std::vector<std::string> paras = body_paragraphs();
+    std::vector<std::vector<text::Line>> layouts(paras.size());
+    std::vector<std::pair<int, int>> phys;  // (paragraph index, line index; -1 == blank)
+    for (int i = 0; i < static_cast<int>(paras.size()); ++i)
+    {
+        if (paras[i].empty())
+        {
+            phys.push_back({ i, -1 });
+            continue;
+        }
+        text::StyledText st = styled_of(paras[i]);
+        layouts[i] = text::layout_paragraph(st, font, box_w, text::Align::Center, true);
+        if (layouts[i].empty())
+        {
+            phys.push_back({ i, -1 });
+            continue;
+        }
+        for (int k = 0; k < static_cast<int>(layouts[i].size()); ++k)
+        {
+            phys.push_back({ i, k });
+        }
+    }
+
+    const int max_scroll = std::max(0, static_cast<int>(phys.size()) - body_visible);
     if (body_scroll > max_scroll)
     {
         body_scroll = max_scroll;
     }
 
-    const int person_col = 96;  // width reserved for the person label in conjugation rows
-    for (int i = 0; i < body_visible; ++i)
+    for (int r = 0; r < body_visible; ++r)
     {
-        const int idx = body_scroll + i;
-        if (idx >= static_cast<int>(rows.size()))
+        const int idx = body_scroll + r;
+        if (idx >= static_cast<int>(phys.size()))
         {
             break;
         }
-        const BodyRow &row = rows[idx];
-        const int ry = body_top + i * line_h;
-        if (row.right.empty())
+        const int pi = phys[idx].first;
+        const int li = phys[idx].second;
+        if (li < 0)
         {
-            blit_line(dest, font, row.left, x0, ry, theme.main_text, theme.background);
+            continue;  // blank separator
         }
-        else
-        {
-            blit_line(dest, font, row.left, x0, ry, theme.secondary_text, theme.background);
-            blit_line(dest, font, row.right, x0 + person_col, ry, theme.main_text, theme.background);
-        }
+        text::StyledText st = styled_of(paras[pi]);
+        text::draw_line_aligned(
+            dest, st, layouts[pi][li], x0, box_w, body_top + r * line_h + ascent,
+            text::Align::Center, theme.main_text, theme.background, &content_clip
+        );
     }
 
-    // A faint "more below/above" cue: arrows at the right of the body if it overflows.
+    // "more above/below" cues at the right edge when the body overflows.
     if (body_scroll > 0)
     {
         blit_line(dest, font, "\xE2\x96\xB4", x1 - 12, body_top, theme.secondary_text, theme.background);
@@ -321,14 +397,14 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         blit_line(dest, font, "\xE2\x96\xBE", x1 - 12, hint_y - line_h, theme.secondary_text, theme.background);
     }
 
-    // Hint bar.
+    // Hint bar, centred.
     {
-        std::string hint = "L/R tabs   \xE2\x86\x95 scroll   B back";
+        std::string hint = "L/R schede   \xE2\x86\x95 scorri   B indietro";
         if (analyses.size() > 1)
         {
-            hint += "   X sense";
+            hint += "   X analisi";
         }
-        blit_line(dest, font, hint, x0, hint_y, theme.secondary_text, theme.background);
+        draw_para(hint, hint_y, theme.secondary_text);
     }
 
     SDL_SetClipRect(dest, nullptr);

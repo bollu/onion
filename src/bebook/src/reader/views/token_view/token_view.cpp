@@ -46,32 +46,14 @@ std::vector<text::Line> layout_paragraph_with(
     styled.family = font->family;
     styled.size_px = font->size_px;
 
-    text::BreakOptions options;
-    options.line_width = text::int_to_fixed(avail_width);
-    options.hyphenate = hyphenate;
-    options.hyphen_width = text::text_width(font, "-", 1);
-    options.first_line_indent =
+    const text::Fixed first_line_indent =
         text::int_to_fixed(static_cast<int>(font->size_px) * PARAGRAPH_INDENT_PERCENT / 100);
 
-    auto lines = text::break_paragraph(
-        s, len,
-        // Measured through the styled path, so a range spanning a switch to italic is
-        // summed across both faces rather than measured entirely in the regular one.
-        [&styled](uint32_t offset, uint32_t length) {
-            return text::measure_styled(styled, offset, length);
-        },
-        options,
-        hyphenate ? text::HyphenateFn(text::hyphenate_word) : nullptr
+    return text::layout_paragraph(
+        styled, font, avail_width,
+        justify ? text::Align::Justify : text::Align::Left,
+        hyphenate, first_line_indent
     );
-
-    if (!justify)
-    {
-        for (auto &line : lines)
-        {
-            line.target_width = line.natural_width;
-        }
-    }
-    return lines;
 }
 
 // Build the StyledText for a laid-out text line, exactly as render() does.
@@ -331,28 +313,27 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 styled.family = font->family;
                 styled.size_px = font->size_px;
 
-                int x = margin_x;
-                if (text_line->centered)
-                {
-                    const int w = text::fixed_round(text::measure_styled(styled, 0, len));
-                    x += (state->text_width() - w) / 2;
-                }
-
-                // Drawn straight onto the destination rather than into a per-line
-                // surface that is then blitted: no allocation on the scroll path, and
-                // glyphs keep their fractional horizontal positions instead of being
-                // snapped to an integer surface origin.
+                // The laid-out line's geometry, as a text::Line, so the same aligned-draw
+                // helper the dictionary popup uses handles the centre/justify math. A
+                // centred heading was laid out ragged (target == natural), so Justify and
+                // Center agree on it except for the pen x, which is what Align selects.
                 //
-                // target_width equals natural_width for the last line of a paragraph and
-                // for centred headings, so those come out ragged without a special case.
-                const text::Fixed extra = text_line->centered
-                    ? 0
-                    : text_line->target_width - text_line->natural_width;
+                // Drawn straight onto the destination rather than into a per-line surface
+                // that is then blitted: no allocation on the scroll path, and glyphs keep
+                // their fractional horizontal positions instead of snapping to a surface.
+                text::Line ln;
+                ln.offset = 0;
+                ln.length = len;
+                ln.trailing_hyphen = text_line->trailing_hyphen;
+                ln.natural_width = text_line->natural_width;
+                ln.target_width = text_line->target_width;
+                ln.stretch_gaps = text_line->stretch_gaps;
 
-                text::draw_styled_line(
-                    dest_surface, styled, 0, len,
-                    extra, text_line->stretch_gaps, text_line->trailing_hyphen,
-                    x, line_y + leading_above + ascent,
+                text::draw_line_aligned(
+                    dest_surface, styled, ln,
+                    margin_x, state->text_width(),
+                    line_y + leading_above + ascent,
+                    text_line->centered ? text::Align::Center : text::Align::Justify,
                     theme.main_text, theme.background
                 );
             }

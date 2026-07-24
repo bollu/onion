@@ -44,10 +44,6 @@ private:
     enum class TabKind { ItEn, ItIt, Conj };
     struct Tab { TabKind kind; std::string title; int conj_index; };
 
-    // One line of the scrollable body. `right` empty => a full-width line (a definition);
-    // otherwise a two-column row (a conjugation: person label, then form).
-    struct BodyRow { std::string left; std::string right; };
-
     struct Analysis
     {
         lexicon::LemmaEntry lemma;
@@ -57,7 +53,10 @@ private:
     };
 
     void rebuild_tabs();
-    std::vector<BodyRow> body_rows() const;
+    // The active tab's body as centred paragraphs: one per gloss (numbered), one per
+    // conjugation row ("io  amo"), an empty string as a blank separator. render() lays
+    // each out with the shared text engine so long glosses wrap and hyphenate.
+    std::vector<std::string> body_paragraphs() const;
     void move_tab(int dir);
     void scroll_body(int dir);
 

@@ -1,6 +1,8 @@
 #include "./styled_text.h"
 
 #include "./face_cache.h"
+#include "./hyphenate.h"
+#include "./line_break.h"
 #include "./shaper.h"
 #include "./text_render.h"
 #include "util/str_utils.h"
@@ -220,6 +222,80 @@ void normalize_runs(std::vector<StyleRun> &runs)
     }
 
     runs.swap(out);
+}
+
+std::vector<Line> layout_paragraph(
+    const StyledText &st,
+    const Font *font,
+    int width,
+    Align align,
+    bool hyphenate,
+    Fixed first_line_indent
+)
+{
+    BreakOptions options;
+    options.line_width = int_to_fixed(width);
+    options.hyphenate = hyphenate;
+    options.hyphen_width = text_width(font, "-", 1);
+    options.first_line_indent = first_line_indent;
+
+    // Measured through the styled path, so a range spanning a switch to italic is summed
+    // across both faces rather than measured entirely in the regular one.
+    std::vector<Line> lines = break_paragraph(
+        st.text, st.length,
+        [&st](uint32_t offset, uint32_t length) { return measure_styled(st, offset, length); },
+        options,
+        hyphenate ? HyphenateFn(hyphenate_word) : nullptr
+    );
+
+    // Only justified setting stretches lines; Left/Center are ragged. break_paragraph
+    // already leaves the last line ragged, so this only affects the interior lines.
+    if (align != Align::Justify)
+    {
+        for (auto &line : lines)
+        {
+            line.target_width = line.natural_width;
+        }
+    }
+    return lines;
+}
+
+int aligned_left_x(Align align, int left_x, int width, Fixed natural)
+{
+    if (align == Align::Center)
+    {
+        return left_x + (width - fixed_round(natural)) / 2;
+    }
+    return left_x;
+}
+
+int draw_line_aligned(
+    SDL_Surface *dst,
+    const StyledText &st,
+    const Line &ln,
+    int left_x,
+    int width,
+    int baseline_y,
+    Align align,
+    SDL_Color fg,
+    SDL_Color bg,
+    const SDL_Rect *clip
+)
+{
+    const int x = aligned_left_x(align, left_x, width, ln.natural_width);
+    Fixed extra_total = 0;
+    uint32_t gaps = 0;
+    if (align == Align::Justify)
+    {
+        extra_total = ln.target_width - ln.natural_width;
+        gaps = ln.stretch_gaps;
+    }
+
+    return draw_styled_line(
+        dst, st, ln.offset, ln.length,
+        extra_total, gaps, ln.trailing_hyphen,
+        x, baseline_y, fg, bg, clip
+    );
 }
 
 } // namespace text
