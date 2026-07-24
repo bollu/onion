@@ -170,6 +170,48 @@ TEST(LexiconService, NonVerbHasNoConjugations)
     EXPECT_EQ(noun->morphology_human, "sostantivo");  // "base" morphology carries only the POS
 }
 
+TEST(LexiconService, NounInflectionResolves)
+{
+    LexiconService lex = open();
+    // Noun plural resolves to its lemma (regression: non-verb inflections used to be dropped).
+    EXPECT_TRUE(has_lemma(lex.lemmatize("case"), "casa"));
+    EXPECT_TRUE(has_lemma(lex.lemmatize("amici"), "amico"));
+}
+
+TEST(LexiconService, EssereePassatoProssimo)
+{
+    LexiconService lex = open();
+    auto tables = lex.conjugations("andare");
+    const ConjTable *pp = nullptr;
+    for (const auto &t : tables)
+    {
+        if (t.tense == "passato_prossimo") pp = &t;
+    }
+    ASSERT_NE(pp, nullptr) << "andare should have a passato prossimo";
+    // Essere auxiliary + participle agreement, not the wrong "ho andato".
+    EXPECT_EQ(pp->forms[0].rfind("sono ", 0), 0u);   // starts with "sono "
+    EXPECT_NE(pp->forms[0].find("andat"), std::string::npos);
+}
+
+TEST(LexiconService, EmptyAndUnknownInputAreSafe)
+{
+    LexiconService lex = open();
+    EXPECT_TRUE(lex.lemmatize("").empty());
+    EXPECT_TRUE(lex.lemmatize("zzzznotanitalianword").empty());
+    EXPECT_TRUE(lex.conjugations("").empty());
+    EXPECT_TRUE(lex.lookup_it_en("").empty());
+    EXPECT_TRUE(lex.lookup_it_it("qualunque").empty());  // It->It is unpopulated; must not crash
+}
+
+TEST(DescribeMorphology, RendersGenderAndNumber)
+{
+    EXPECT_EQ(describe_morphology("NOUN", "pl"), "sostantivo \xC2\xB7 plurale");
+    EXPECT_EQ(describe_morphology("ADJ", "f+pl"),
+              "aggettivo \xC2\xB7 femminile \xC2\xB7 plurale");
+    EXPECT_EQ(describe_morphology("ADJ", "m+sg"),
+              "aggettivo \xC2\xB7 maschile \xC2\xB7 singolare");
+}
+
 TEST(DescribeMorphology, HandlesTenseAndPerson)
 {
     EXPECT_EQ(describe_morphology("VER", "pres+3+p"), "verbo \xC2\xB7 presente \xC2\xB7 loro");

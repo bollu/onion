@@ -217,6 +217,8 @@ $(APP_DIR)/specimen: $(SPECIMEN_OBJECTS)
 
 test: $(DICT) $(APP_DIR)/$(APP_TEST_TARGET)
 	$(APP_DIR)/$(APP_TEST_TARGET)
+	@# Unit tests for the host-side lexicon build (accent/stress heuristics, tag mapping).
+	@if command -v python3 >/dev/null 2>&1; then python3 tools/test_build_lexicon.py; fi
 
 # Cross-compilation happens in Onion's toolchain container; see the root Makefile's
 # `toolchain` and `with-toolchain` targets.
