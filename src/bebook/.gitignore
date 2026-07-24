@@ -10,3 +10,11 @@ __pycache__/
 
 # Vendored SQLite amalgamation, fetched by tools/fetch_sqlite.sh (like the HarfBuzz submodule).
 third-party/sqlite/
+
+# Wiktextract (kaikki.org) Italian dump, fetched by tools/fetch_kaikki.sh. ~761MB build
+# input for build_lexicon.py.
+third-party/kaikki/
+
+# The dictionary DB ships compressed (resources/italian.sqlite.xz, ~16MB, committed). The
+# raw ~80MB .sqlite is unpacked from it at build time (see the Makefile) and never committed.
+resources/italian.sqlite

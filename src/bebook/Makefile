@@ -136,11 +136,23 @@ DEPENDENCIES := \
 	    $(SANDBOX_OBJECTS:.o=.d) \
 	    $(TEST_OBJECTS:.o=.d)
 
-all: build $(APP_DIR)/$(APP_READER_TARGET) $(APP_DIR)/$(APP_SANDBOX_TARGET)
+all: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET) $(APP_DIR)/$(APP_SANDBOX_TARGET)
 
 # Just the reader. This is what the Onion build calls: the sandbox harnesses are
 # developer tools and nothing ships them.
-reader: build $(APP_DIR)/$(APP_READER_TARGET)
+reader: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET)
+
+# The Italian dictionary DB ships compressed in git (resources/italian.sqlite.xz, ~16MB);
+# the raw ~80MB .sqlite is gitignored and unpacked here on demand. Runtime + tests read the
+# raw file relative to the working directory. Prefer the xz CLI, fall back to Python's lzma
+# so the step works wherever either exists (dev host, test/toolchain containers).
+DICT := resources/italian.sqlite
+$(DICT): $(DICT).xz
+	@if command -v xz >/dev/null 2>&1; then \
+		xz -dkf $< ; \
+	else \
+		python3 -c "import lzma,shutil,sys; shutil.copyfileobj(lzma.open(sys.argv[1]), open(sys.argv[2],'wb'))" $< $@ ; \
+	fi
 
 $(ROTOZOOM_OBJECT): $(ROTOZOOM_SRC)
 	@mkdir -p $(@D)
@@ -201,7 +213,7 @@ $(APP_DIR)/specimen: $(SPECIMEN_OBJECTS)
 
 .PHONY: all reader build clean debug release run_tests specimen
 
-test: $(APP_DIR)/$(APP_TEST_TARGET)
+test: $(DICT) $(APP_DIR)/$(APP_TEST_TARGET)
 	$(APP_DIR)/$(APP_TEST_TARGET)
 
 # Cross-compilation happens in Onion's toolchain container; see the root Makefile's

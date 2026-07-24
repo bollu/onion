@@ -207,14 +207,23 @@ std::vector<ConjTable> LexiconService::conjugations(const std::string &lemma) co
 
 std::string describe_morphology(const std::string &pos, const std::string &features)
 {
+    // Italian grammatical names, to match the conjugation tab labels and what the learner
+    // sees in Italian references.
     static const std::unordered_map<std::string, std::string> POS_NAME = {
-        {"VER", "verb"}, {"NOUN", "noun"}, {"ADJ", "adjective"}, {"ADV", "adverb"},
-        {"PRO", "pronoun"}, {"PRE", "preposition"}, {"CON", "conjunction"},
-        {"ART", "article"}, {"DET", "determiner"},
+        {"VER", "verbo"}, {"NOUN", "sostantivo"}, {"ADJ", "aggettivo"}, {"ADV", "avverbio"},
+        {"PRO", "pronome"}, {"PRE", "preposizione"}, {"CON", "congiunzione"},
+        {"ART", "articolo"}, {"DET", "determinante"},
     };
+    // Tense/mood/non-finite feature codes. The bulk (kaikki) build registers every
+    // inflected form for lemmatization, so besides the four surfaced indicative tenses the
+    // header may see subjunctive/imperative/past-historic and the non-finite forms. Codes
+    // combine with '+' (e.g. "sub+impf+1+s" -> "subjunctive imperfect io"); unknown tokens
+    // are ignored, so this degrades gracefully.
     static const std::unordered_map<std::string, std::string> TENSE_NAME = {
-        {"pres", "present"}, {"impf", "imperfect"}, {"fut", "future"},
-        {"cond", "conditional"}, {"inf", "infinitive"},
+        {"pres", "presente"}, {"impf", "imperfetto"}, {"fut", "futuro"},
+        {"cond", "condizionale"}, {"inf", "infinito"},
+        {"sub", "congiuntivo"}, {"impr", "imperativo"}, {"rem", "passato remoto"},
+        {"ger", "gerundio"}, {"part", "participio"},
     };
 
     std::vector<std::string> parts;

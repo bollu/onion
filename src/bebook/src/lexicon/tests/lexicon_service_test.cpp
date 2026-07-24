@@ -59,7 +59,7 @@ TEST(LexiconService, LemmatizesConjugatedForm)
     EXPECT_EQ(e->lemma, "fare");
     EXPECT_EQ(e->pos, "VER");
     EXPECT_TRUE(e->is_verb());
-    EXPECT_EQ(e->morphology_human, "verb \xC2\xB7 imperfect \xC2\xB7 io");
+    EXPECT_EQ(e->morphology_human, "verbo \xC2\xB7 imperfetto \xC2\xB7 io");
 }
 
 TEST(LexiconService, LemmatizationIsCaseInsensitive)
@@ -85,8 +85,15 @@ TEST(LexiconService, EnglishGlosses)
     LexiconService lex = open();
     auto senses = lex.lookup_it_en("fare");
     ASSERT_GE(senses.size(), 2u);
-    EXPECT_EQ(senses[0].gloss, "to do");
-    EXPECT_EQ(senses[1].gloss, "to make");
+    // Assert presence, not an exact index/string: the glosses come from Wiktionary and
+    // their precise wording/order is not a stable contract.
+    auto has = [&](const std::string &needle) {
+        return std::any_of(senses.begin(), senses.end(), [&](const Sense &s) {
+            return s.gloss.find(needle) != std::string::npos;
+        });
+    };
+    EXPECT_TRUE(has("do"));
+    EXPECT_TRUE(has("make"));
 }
 
 TEST(LexiconService, ImperfettoTableIsComplete)
@@ -138,18 +145,29 @@ TEST(LexiconService, NonVerbHasNoConjugations)
     LexiconService lex = open();
     EXPECT_TRUE(lex.conjugations("casa").empty());
 
+    // "casa" is a noun. (Real data may also surface a rare verb homograph, so find the
+    // noun analysis rather than assuming it is first.)
     auto res = lex.lemmatize("casa");
     ASSERT_FALSE(res.empty());
-    EXPECT_FALSE(res[0].is_verb());
-    EXPECT_EQ(res[0].pos, "NOUN");
-    // "base" morphology carries only the part of speech.
-    EXPECT_EQ(res[0].morphology_human, "noun");
+    const LemmaEntry *noun = nullptr;
+    for (const auto &e : res)
+    {
+        if (e.pos == "NOUN") noun = &e;
+    }
+    ASSERT_NE(noun, nullptr);
+    EXPECT_FALSE(noun->is_verb());
+    EXPECT_EQ(noun->morphology_human, "sostantivo");  // "base" morphology carries only the POS
 }
 
 TEST(DescribeMorphology, HandlesTenseAndPerson)
 {
-    EXPECT_EQ(describe_morphology("VER", "pres+3+p"), "verb \xC2\xB7 present \xC2\xB7 loro");
-    EXPECT_EQ(describe_morphology("VER", "fut+2+s"), "verb \xC2\xB7 future \xC2\xB7 tu");
-    EXPECT_EQ(describe_morphology("VER", "inf"), "verb \xC2\xB7 infinitive");
-    EXPECT_EQ(describe_morphology("NOUN", "base"), "noun");
+    EXPECT_EQ(describe_morphology("VER", "pres+3+p"), "verbo \xC2\xB7 presente \xC2\xB7 loro");
+    EXPECT_EQ(describe_morphology("VER", "fut+2+s"), "verbo \xC2\xB7 futuro \xC2\xB7 tu");
+    EXPECT_EQ(describe_morphology("VER", "inf"), "verbo \xC2\xB7 infinito");
+    EXPECT_EQ(describe_morphology("NOUN", "base"), "sostantivo");
+    // Codes the bulk build adds beyond the four surfaced tenses.
+    EXPECT_EQ(describe_morphology("VER", "sub+impf+1+s"),
+              "verbo \xC2\xB7 congiuntivo \xC2\xB7 imperfetto \xC2\xB7 io");
+    EXPECT_EQ(describe_morphology("VER", "rem+3+s"), "verbo \xC2\xB7 passato remoto \xC2\xB7 lui/lei");
+    EXPECT_EQ(describe_morphology("VER", "part"), "verbo \xC2\xB7 participio");
 }

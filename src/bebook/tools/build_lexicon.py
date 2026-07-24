@@ -449,13 +449,333 @@ def build(out_path):
           f"{n_forms} form rows, {n_defs} en-glosses.")
 
 
+# --- kaikki (Wiktextract) ingest ---------------------------------------------------
+#
+# The bulk build parses kaikki.org's Italian JSONL (one entry per word/POS/etymology).
+# The lemma is the clean `word` field; its `forms[]` list carries every inflected surface
+# tagged with grammatical features. Two things make this non-trivial:
+#
+#   1. Stress marks. kaikki's inflected forms are marked with pedagogical stress accents
+#      ("amàvo", "amerémo", "hò") that are NOT Italian orthography. Real text has "amavo",
+#      "ameremo", "ho". strip_stress() removes interior accents (always wrong in spelling)
+#      and keeps a genuine final accent only when it is orthographically real (polysyllables
+#      "farò"/"città", and a small set of accented monosyllables "è"/"può"/"dà"). Without
+#      this, selecting a word in a real book would never match the DB.
+#   2. Compound tenses. kaikki lists only simple tenses in forms[]; passato prossimo is
+#      synthesized from the past participle + auxiliary, reusing passato_prossimo() above.
+
+import json
+
+# kaikki POS -> our coarse Morph-it! style tag. Anything not here is skipped (proper
+# nouns, affixes, numerals, interjections, symbols) to keep the DB to reading vocabulary.
+KAIKKI_POS = {
+    "verb": "VER", "noun": "NOUN", "adj": "ADJ", "adv": "ADV",
+    "pron": "PRO", "prep": "PRE", "conj": "CON", "article": "ART", "det": "DET",
+}
+
+# Form variants we do not want cluttering lemmatization or the tables.
+DISQUALIFY = {
+    "archaic", "dated", "obsolete", "rare", "literary", "alternative",
+    "apocopic", "dialectal", "Modern",
+}
+# Synthetic / non-form rows kaikki emits inside forms[].
+SKIP_FORM_TAGS = {"table-tags", "inflection-template", "canonical", "auxiliary", "romanization", "class"}
+
+_DEACC = {
+    "à": "a", "á": "a", "â": "a", "ã": "a",
+    "è": "e", "é": "e", "ê": "e",
+    "ì": "i", "í": "i", "î": "i",
+    "ò": "o", "ó": "o", "ô": "o",
+    "ù": "u", "ú": "u", "û": "u",
+}
+_VOWELS = set("aeiouàáâãèéêìíîòóôùúû")
+# Accented monosyllables that DO keep their accent in real orthography, keyed by their
+# deaccented form. Everything else monosyllabic (ho, fa, va, sto, so, do) drops the mark.
+_KEEP_MONO = {"e", "puo", "gia", "cio", "piu", "giu", "da", "di", "si", "la", "li", "ne", "se", "te"}
+
+
+def _vowel_groups(s):
+    n, prev = 0, False
+    for c in s:
+        v = c in _VOWELS
+        if v and not prev:
+            n += 1
+        prev = v
+    return n
+
+
+def strip_stress(form):
+    """kaikki stress-marked surface -> Italian orthography (see module note)."""
+    if not form:
+        return form
+    chars = list(form)
+    for i in range(len(chars) - 1):
+        chars[i] = _DEACC.get(chars[i], chars[i])
+    last = chars[-1]
+    if last in _DEACC:  # a final accented vowel
+        deacc = "".join(_DEACC.get(c, c) for c in chars)
+        if _vowel_groups(deacc) < 2 and deacc.lower() not in _KEEP_MONO:
+            chars[-1] = _DEACC[last]
+    return "".join(chars)
+
+
+def _person_number(ts):
+    p = "1" if "first-person" in ts else "2" if "second-person" in ts else "3" if "third-person" in ts else None
+    n = "s" if "singular" in ts else "p" if "plural" in ts else None
+    return p, n
+
+
+def form_features(tags):
+    """Map a kaikki tag list to our `features` string, or None to skip the form."""
+    ts = set(tags)
+    if ts & SKIP_FORM_TAGS:
+        return None
+    if "infinitive" in ts:
+        return "inf"
+    if "participle" in ts:
+        return "part"
+    if "gerund" in ts:
+        return "ger"
+
+    sub = "subjunctive" in ts
+    if "conditional" in ts:
+        base = "cond"
+    elif "imperative" in ts:
+        base = "impr"
+    elif "future" in ts:
+        base = "fut"
+    elif "imperfect" in ts:
+        base = "impf"
+    elif "present" in ts:
+        base = "pres"
+    elif "historic" in ts or "past" in ts:
+        base = "rem"
+    else:
+        return None
+
+    code = f"sub+{base}" if (sub and base in ("pres", "impf")) else base
+    p, n = _person_number(ts)
+    return f"{code}+{p}+{n}" if (p and n) else code
+
+
+# The four simple indicative tenses we surface as conjugation tabs. Maps a form's tags to
+# (tense_key, person_index 0..5), or None if the form is not one of these cells.
+def conj_slot(tags):
+    ts = set(tags)
+    if "subjunctive" in ts or "imperative" in ts:
+        return None
+    p, n = _person_number(ts)
+    if not (p and n):
+        return None
+    if "conditional" in ts:
+        tense = "condizionale"
+    elif "future" in ts and "indicative" in ts:
+        tense = "futuro_semplice"
+    elif "imperfect" in ts and "indicative" in ts:
+        tense = "imperfetto"
+    elif "present" in ts and "indicative" in ts:
+        tense = "presente"
+    else:
+        return None
+    idx = (int(p) - 1) + (3 if n == "p" else 0)
+    return tense, idx
+
+
+def _real_sense(s):
+    """A genuine definition, not an 'inflection of X' form-of pointer or a bare category."""
+    tags = s.get("tags") or []
+    if "form-of" in tags or "no-gloss" in tags or s.get("form_of"):
+        return False
+    return bool(s.get("glosses"))
+
+
+def _clean_gloss(g):
+    """Drop editorial cruft; return None to skip the gloss entirely."""
+    # Wiktionary appends maintenance notes ("See Category:Italian ...") to some glosses.
+    g = g.split("See Category:")[0].strip()
+    g = g.rstrip("; ").strip()
+    if not g or "Category:" in g:
+        return None
+    return g
+
+
+def _flush_word(db, word, entries, seen_defs, counters):
+    """Emit rows for all entries sharing one headword (`word`)."""
+    lemma = word  # kaikki `word` is the clean orthographic headword.
+
+    # Only entries that are a mapped POS AND carry a real definition are treated as this
+    # lemma. Wiktionary gives every inflected form its own page ("amavo": "imperfect of
+    # amare"); those are form-of-only and must NOT register as lemmas -- their inflection is
+    # already captured from the real lemma's forms[]. Skipping them also keeps the verb
+    # count honest and avoids self-referential (amavo -> amavo) rows.
+    real = [e for e in entries if KAIKKI_POS.get(e.get("pos")) and any(_real_sense(s) for s in e.get("senses", []))]
+    if not real:
+        return
+
+    # Definitions.
+    def_no = 0
+    for e in real:
+        for s in e.get("senses", []):
+            if not _real_sense(s):
+                continue
+            for g in (s.get("glosses") or []):
+                g = _clean_gloss(g)
+                if g is None:
+                    continue
+                key = (lemma, g)
+                if key in seen_defs:
+                    continue
+                seen_defs.add(key)
+                def_no += 1
+                db.execute("INSERT INTO defs_it_en VALUES (?,?,?)", (lemma, def_no, g))
+                counters["defs"] += 1
+
+    # Forms table (lemmatization): headword + every inflected form, stress-stripped.
+    form_rows = set()
+    is_verb = any(e.get("pos") == "verb" for e in real)
+    head_pos = KAIKKI_POS.get(real[0].get("pos"))
+    if head_pos:
+        form_rows.add((norm(lemma), lemma, head_pos, "inf" if head_pos == "VER" else "base"))
+
+    for e in real:
+        pos = KAIKKI_POS.get(e.get("pos"))
+        if pos is None:
+            continue
+        for fm in e.get("forms", []):
+            tags = fm.get("tags") or []
+            if set(tags) & DISQUALIFY or set(tags) & SKIP_FORM_TAGS:
+                continue
+            surface = strip_stress((fm.get("form") or "").strip())
+            if not surface or " " in surface or surface == "-":
+                continue
+            feat = form_features(tags)
+            if feat is None:
+                continue
+            form_rows.add((norm(surface), lemma, pos, feat))
+
+    for row in form_rows:
+        db.execute("INSERT INTO forms VALUES (?,?,?,?)", row)
+        counters["forms"] += 1
+
+    # Conjugation tables (verbs): the four simple tenses from forms[], plus a synthesized
+    # passato prossimo. Pick the most standard candidate per (tense, person).
+    if not is_verb:
+        return
+    counters["verbs"] += 1
+
+    slots = {}          # (tense, idx) -> (penalty, form)
+    participle = None
+    aux = None
+    for e in real:
+        if e.get("pos") != "verb":
+            continue
+        for fm in e.get("forms", []):
+            tags = fm.get("tags") or []
+            ts = set(tags)
+            raw = (fm.get("form") or "").strip()
+            if not raw or " " in raw:
+                continue
+            if "auxiliary" in ts and aux is None:
+                a = strip_stress(raw).lower()
+                if a in ("avere", "essere"):
+                    aux = a
+                continue
+            if {"participle", "past"} <= ts and (ts & DISQUALIFY) == set() and participle is None:
+                participle = strip_stress(raw)
+            slot = conj_slot(tags)
+            if slot is None:
+                continue
+            penalty = len(ts & DISQUALIFY)
+            cur = slots.get(slot)
+            if cur is None or penalty < cur[0]:
+                slots[slot] = (penalty, strip_stress(raw))
+
+    for (tense, idx), (_pen, form) in slots.items():
+        db.execute("INSERT INTO conj VALUES (?,?,?,?)", (lemma, tense, idx, form))
+        counters["conj"] += 1
+
+    if participle:
+        for idx, form in enumerate(passato_prossimo(aux or "avere", participle)):
+            db.execute("INSERT INTO conj VALUES (?,?,?,?)", (lemma, "passato_prossimo", idx, form))
+            counters["conj"] += 1
+
+
+def ingest_kaikki(out_path, jsonl_path, limit=None):
+    if os.path.exists(out_path):
+        os.remove(out_path)
+    db = sqlite3.connect(out_path)
+    db.executescript(SCHEMA)
+
+    counters = {"defs": 0, "forms": 0, "conj": 0, "verbs": 0, "entries": 0, "lemmas": 0}
+    seen_defs = set()
+    cur_word, group = None, []
+
+    def flush():
+        if group:
+            _flush_word(db, cur_word, group, seen_defs, counters)
+            counters["lemmas"] += 1
+
+    with open(jsonl_path, encoding="utf-8") as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if e.get("lang_code") != "it":
+                continue
+            counters["entries"] += 1
+            if limit and counters["entries"] > limit:
+                break
+            w = e.get("word")
+            # kaikki is sorted by word, so same-headword entries are contiguous: group them
+            # to dedupe glosses/forms and gather all POS/etymologies of one lemma together.
+            if w != cur_word:
+                flush()
+                cur_word, group = w, []
+                seen_defs = set() if False else seen_defs  # defs deduped globally by (lemma,gloss)
+            group.append(e)
+        flush()
+
+    db.executescript(INDEXES)
+    db.execute("INSERT INTO meta VALUES ('schema_version', '1')")
+    db.execute("INSERT INTO meta VALUES ('build', 'kaikki')")
+    db.execute("INSERT INTO meta VALUES ('source_url', 'https://kaikki.org/dictionary/Italian/')")
+    db.execute("INSERT INTO meta VALUES ('source', 'Wiktionary via Wiktextract (kaikki.org), CC-BY-SA')")
+    db.commit()
+    db.close()
+    print(f"Wrote {out_path} from kaikki: {counters['lemmas']} lemmas "
+          f"({counters['verbs']} verbs), {counters['forms']} form rows, "
+          f"{counters['defs']} en-glosses, {counters['conj']} conj rows.")
+    write_xz(out_path)
+
+
+def write_xz(path):
+    """Write path.xz (max compression). This is the committed artifact -- the ~80MB raw
+    DB is gitignored and regenerated from the .xz at build time (see the Makefile)."""
+    import lzma
+    import shutil
+    xz_path = path + ".xz"
+    with open(path, "rb") as fi, lzma.open(xz_path, "wb", preset=9 | lzma.PRESET_EXTREME) as fo:
+        shutil.copyfileobj(fi, fo)
+    print(f"Compressed -> {xz_path} ({os.path.getsize(xz_path)} bytes)")
+
+
 def main():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     default_out = os.path.join(here, "resources", "italian.sqlite")
+    default_kaikki = os.path.join(here, "third-party", "kaikki", "it.jsonl")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", default=default_out, help="output SQLite path")
+    ap.add_argument("--source", choices=["seed", "kaikki"], default="seed",
+                    help="seed = curated core (default, no download); kaikki = bulk Wiktextract")
+    ap.add_argument("--input", default=default_kaikki,
+                    help="kaikki Italian JSONL (for --source kaikki)")
+    ap.add_argument("--limit", type=int, default=None, help="cap entries (smoke tests)")
     args = ap.parse_args()
-    build(args.out)
+    if args.source == "kaikki":
+        ingest_kaikki(args.out, args.input, args.limit)
+    else:
+        build(args.out)
 
 
 if __name__ == "__main__":
