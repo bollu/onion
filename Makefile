@@ -356,6 +356,27 @@ bewiki:
 	@cp $(SRC_DIR)/bebook/resources/reading_list.tsv "$(BEWIKI_OUT)/resources/"
 	@$(ECHO) $(PRINT_DONE)
 
+# Install the staged tree onto the device. Both build first, so either one is the single
+# command to run after a code change. See tools/deploy_*.sh for what they check.
+
+# Card is in this Mac's reader. Fast, and works on any Miyoo including the base Mini.
+# Auto-detects the volume; SD=/Volumes/NAME overrides, DRY_RUN=1 to preview.
+deploy-card: sideload-bewiki
+	@$(ECHO) $(PRINT_RECIPE)
+	@$(ROOT_DIR)/tools/deploy_card.sh
+	@$(ECHO) $(PRINT_DONE)
+
+# Device is serving its own hotspot. Miyoo Mini Plus only -- the base Mini has no Wi-Fi.
+# Needs SSH on in Tweaks > Network. DEVICE_HOST/DEVICE_USER override.
+deploy-wifi: sideload-bewiki
+	@$(ECHO) $(PRINT_RECIPE)
+	@$(ROOT_DIR)/tools/deploy_wifi.sh
+	@$(ECHO) $(PRINT_DONE)
+
+# One-time: stop deploy-wifi asking for a password every run.
+deploy-wifi-key:
+	@$(ROOT_DIR)/tools/deploy_wifi_key.sh
+
 sideload-bewiki:
 	@$(ECHO) $(PRINT_RECIPE)
 	@$(MAKE) sideload-bebook

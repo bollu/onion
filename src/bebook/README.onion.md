@@ -56,6 +56,51 @@ Manifest, launcher and icon live in `static/packages/`, not here:
   anything launched from a registered system, so recents, favourites, box art, play-time
   tracking and GameSwitcher all follow without bebook writing to any of them.
 
+## Deploying to a device
+
+From the repo root, after `make with-toolchain CMD=bewiki`:
+
+```sh
+make deploy-card    # card is in this Mac's reader
+make deploy-wifi    # device is serving its own hotspot
+```
+
+Both stage into `build/sideload/` first (a tree shaped like the card root) and then rsync
+it across. Two targets rather than one with a flag: they have different failure modes,
+different preflight checks, and costs three orders of magnitude apart.
+
+`deploy-card` finds the volume by looking for `.tmp_update/` and `Roms/` together, and
+refuses to write anywhere that lacks both — `SD=/Volumes/NAME` overrides the search but is
+still checked, since the failure being guarded against is unpacking 284MB onto a backup
+drive. `deploy-wifi` needs a **Miyoo Mini Plus** (the base Mini has no Wi-Fi) with
+Tweaks → Network → SSH on, and this Mac joined to `MiyooMini+APOnionOS`; the device is
+always `192.168.100.100` there. Run `make deploy-wifi-key` once to stop it asking for a
+password. `DRY_RUN=1` previews either.
+
+Nothing is installed on the device to make this work: Onion already ships dropbear and
+rsync in `.tmp_update/bin`.
+
+Both compare with `--checksum` rather than timestamps. The card is FAT32, which stores
+mtimes at 2-second resolution, so a written file's timestamp comes back rounded and every
+file would otherwise look modified — re-sending the 157MB dictionary on every run.
+Comparing content means a file moves only if its bytes differ.
+
+### Content
+
+The Wikipedia archive is not in git (112MB). Fetch it once:
+
+```sh
+src/bebook/tools/fetch_zim.sh
+```
+
+It resolves the current build from kiwix (the filenames carry a month suffix, so a pinned
+URL would stop working within weeks), resumes if interrupted, and lands in
+`resources/wiki/`, which is gitignored. Set `ZIM_NAME=wikipedia_it_top_nopic` for full
+articles instead of lead sections — same code path, 876MB instead of 112MB.
+
+Deploy stages the archive when it is present and warns when it is not, rather than
+quietly shipping a reader with nothing to read.
+
 ## Tests
 
 `make test` inside `src/bebook` builds and runs the suite (needs gtest and the host SDL
