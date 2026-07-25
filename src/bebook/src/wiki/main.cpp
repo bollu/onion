@@ -187,17 +187,24 @@ int main(int argc, char **argv)
 
     // One place, because the article view is created either from the reading list or by
     // resuming, and both need identical bookkeeping.
-    auto install_on_change = [&]() {
-        article_view->set_on_change([&](const std::string &path, DocAddr at) {
-            state_store.set_setting(STORE_KEY_LAST_PATH, path);
-            state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
-            state_store.set_setting(STORE_KEY_READ_PREFIX + path, "1");
+    auto record_change = [&](const std::string &path, DocAddr at) {
+        state_store.set_setting(STORE_KEY_LAST_PATH, path);
+        state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
+        state_store.set_setting(STORE_KEY_READ_PREFIX + path, "1");
 
-            pending_tile_path = path;
-            pending_tile_title = article_view->current_title();
-            pending_tile_address = at;
-            tile_write.poke(SDL_GetTicks());
-        });
+        pending_tile_path = path;
+        pending_tile_title = article_view->current_title();
+        pending_tile_address = at;
+        tile_write.poke(SDL_GetTicks());
+    };
+
+    auto install_on_change = [&]() {
+        article_view->set_on_change(record_change);
+
+        // Fire once for the article already open: ArticleView navigates in its
+        // constructor, before this callback exists, so opening one and quitting without
+        // scrolling would otherwise leave neither a resume point nor a tile.
+        record_change(article_view->current_path(), article_view->current_address());
     };
 
     if (!context->open(zim_path))
