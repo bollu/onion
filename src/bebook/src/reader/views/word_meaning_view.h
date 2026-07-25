@@ -52,6 +52,9 @@ private:
         std::vector<lexicon::ConjTable> conj;
     };
 
+    // (Re)point the popup at `surface`: gather analyses + tabs, or, if nothing is found,
+    // fuzzy suggestions. Used both at construction and when a suggestion is picked.
+    void load(const std::string &surface);
     void rebuild_tabs();
 
     // One block of the active tab's body. A `prose` item is a paragraph (a numbered gloss or
@@ -68,8 +71,9 @@ private:
     void move_tab(int dir);
     void scroll_body(int dir);
 
-    // Note: LexiconService is used only during construction (to gather `analyses`); it is
-    // not kept as a member, so a popup never outlives a query and holds no service reference.
+    // Held so a picked fuzzy suggestion can be looked up (load()) without leaving the popup.
+    // The owner (ReaderView) keeps the service for the popup's lifetime.
+    const lexicon::LexiconService &lexicon;
     SystemStyling &styling;
     uint32_t styling_sub_id;
 
@@ -79,6 +83,11 @@ private:
     std::vector<Tab> tabs;
     int active_tab = 0;
     int body_scroll = 0;       // first visible body row
+
+    // When the word is unknown: closest known lemmas ("Forse cercavi:"), and the cursor over
+    // them. A on a suggestion re-points the popup at it via load().
+    std::vector<std::string> suggestions;
+    int suggestion_index = 0;
 
     bool _is_done = false;
     bool _needs_render = true;

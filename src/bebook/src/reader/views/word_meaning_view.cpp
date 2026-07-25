@@ -68,16 +68,26 @@ WordMeaningView::WordMeaningView(
     const lexicon::LexiconService &lexicon,
     SystemStyling &styling
 )
-    : styling(styling)
+    : lexicon(lexicon)
+    , styling(styling)
     , styling_sub_id(styling.subscribe_to_changes([this](SystemStyling::ChangeId) {
           _needs_render = true;
       }))
-    , surface(surface)
     , scroll_throttle(250, 60)
 {
+    load(surface);
+}
+
+void WordMeaningView::load(const std::string &s)
+{
+    surface = s;
+    analyses.clear();
+    suggestions.clear();
+    suggestion_index = 0;
+
     // Resolve the surface to one or more analyses, gathering everything each lemma needs so
     // rendering is a pure read of already-fetched data.
-    for (const auto &entry : lexicon.lemmatize(surface))
+    for (const auto &entry : lexicon.lemmatize(s))
     {
         Analysis a;
         a.lemma = entry;
@@ -91,7 +101,7 @@ WordMeaningView::WordMeaningView(
     // (e.g. an uninflected lemma). Treat the surface as its own lemma if it has senses.
     if (analyses.empty())
     {
-        const std::string key = to_lower(surface);
+        const std::string key = to_lower(s);
         auto en = lexicon.lookup_it_en(key);
         auto it = lexicon.lookup_it_it(key);
         if (!en.empty() || !it.empty())
@@ -104,8 +114,18 @@ WordMeaningView::WordMeaningView(
         }
     }
 
+    // Still nothing: offer the closest known words ("did you mean").
+    if (analyses.empty())
+    {
+        for (const auto &sg : lexicon.suggest(s))
+        {
+            suggestions.push_back(sg.lemma);
+        }
+    }
+
     active_analysis = analyses.empty() ? -1 : 0;
     rebuild_tabs();
+    _needs_render = true;
 }
 
 WordMeaningView::~WordMeaningView()
@@ -343,6 +363,36 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     rule(y);
     y += 1 + PAD_Y / 2;
 
+    // --- No entry: fuzzy "did you mean" suggestions, as a selectable list --------------
+    if (active_analysis < 0 && !suggestions.empty())
+    {
+        draw_prose("Forse cercavi:", nullptr, cx0, y, cw, theme.secondary_text);
+        y += line_h + PAD_Y / 4;
+
+        for (int i = 0; i < static_cast<int>(suggestions.size()); ++i)
+        {
+            const bool sel = (i == suggestion_index);
+            if (sel)
+            {
+                SDL_Rect hl = { static_cast<Sint16>(cx0 - 4), static_cast<Sint16>(y - 1),
+                                static_cast<Uint16>(cw + 8), static_cast<Uint16>(line_h + 2) };
+                SDL_FillRect(dest, &hl, map(theme.highlight_background));
+            }
+            blit_line(dest, font, suggestions[i], cx0, y,
+                      sel ? theme.highlight_text : theme.main_text,
+                      sel ? theme.highlight_background : theme.background);
+            y += line_h;
+        }
+
+        const int hint_y = box_y + box_h - PAD_Y - line_h;
+        rule(hint_y - PAD_Y / 2);
+        draw_prose("\xE2\x86\x95 scegli   A apri   B indietro", nullptr,
+                   cx0, hint_y, cw, theme.secondary_text);
+
+        SDL_SetClipRect(dest, nullptr);
+        return true;
+    }
+
     // --- Tab strip: "◂ [Title] ▸" centred, active title in a filled pill ---------------
     if (!tabs.empty())
     {
@@ -512,6 +562,32 @@ bool WordMeaningView::is_modal()
 
 void WordMeaningView::on_keypress(SDLKey key)
 {
+    // "Did you mean" list: up/down move the cursor, A opens the picked word.
+    if (active_analysis < 0 && !suggestions.empty())
+    {
+        const int n = static_cast<int>(suggestions.size());
+        switch (key)
+        {
+            case SW_BTN_B:
+                _is_done = true;
+                break;
+            case SW_BTN_UP:
+                suggestion_index = (suggestion_index - 1 + n) % n;
+                _needs_render = true;
+                break;
+            case SW_BTN_DOWN:
+                suggestion_index = (suggestion_index + 1) % n;
+                _needs_render = true;
+                break;
+            case SW_BTN_A:
+                load(suggestions[suggestion_index]);
+                break;
+            default:
+                break;
+        }
+        return;
+    }
+
     switch (key)
     {
         case SW_BTN_B:
@@ -550,6 +626,13 @@ void WordMeaningView::on_keyheld(SDLKey key, uint32_t held_time_ms)
 {
     if ((key == SW_BTN_UP || key == SW_BTN_DOWN) && scroll_throttle(held_time_ms))
     {
-        scroll_body(key == SW_BTN_UP ? -1 : 1);
+        if (active_analysis < 0 && !suggestions.empty())
+        {
+            on_keypress(key);  // move the suggestion cursor
+        }
+        else
+        {
+            scroll_body(key == SW_BTN_UP ? -1 : 1);
+        }
     }
 }
