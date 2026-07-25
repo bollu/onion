@@ -43,6 +43,7 @@ PACKAGES_EMU_DEST   := $(PACKAGES_DIR)/Emu
 PACKAGES_APP_DEST   := $(PACKAGES_DIR)/App
 PACKAGES_RAPP_DEST  := $(PACKAGES_DIR)/RApp
 BEBOOK_DEST         := $(PACKAGES_APP_DEST)/BeBook/App/BeBook
+BEWIKI_DEST         := $(PACKAGES_APP_DEST)/BeWiki/App/BeWiki
 # Drop-in app folders assembled by `sideload`, copyable straight to the SD card.
 SIDELOAD_ROOT       := $(BUILD_DIR)/sideload
 SIDELOAD_DIR        := $(SIDELOAD_ROOT)/App
@@ -129,7 +130,7 @@ include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external bebook bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link sideload sideload-bebook sideload-systems release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
+.PHONY: all version core apps external bebook bewiki sideload-bewiki bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link sideload sideload-bebook sideload-systems release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
 
 all: dist
 
@@ -286,6 +287,7 @@ music-player:
 # BEBOOK_OUT is overridden by sideload-bebook; by default this populates the
 # Package Manager catalogue.
 BEBOOK_OUT ?= $(BEBOOK_DEST)
+BEWIKI_OUT ?= $(BEBOOK_DEST)
 bebook:
 	@$(ECHO) $(PRINT_RECIPE)
 # PREFIX comes from the toolchain image; bare on the host it is empty.
@@ -336,6 +338,33 @@ sideload-systems:
 # an empty directory does not survive being copied across. No Imgs/ means no covers.
 	@cp -a "$(STATIC_PACKAGES)/Emu/Books (bebook)/Roms/EBOOK" "$(SIDELOAD_ROOT)/Roms/"
 	@chmod a+x "$(SIDELOAD_ROOT)/Emu/EBOOK/launch.sh"
+	@$(ECHO) $(PRINT_DONE)
+
+bewiki:
+	@$(ECHO) $(PRINT_RECIPE)
+	@test -n "$(PREFIX)" || { \
+	    echo "bewiki needs the cross toolchain sysroot (PREFIX is unset)."; \
+	    echo "Run it inside the container, e.g.:"; \
+	    echo "    make with-toolchain CMD=$(or $(MAKECMDGOALS),bewiki)"; \
+	    exit 1; }
+	@cd $(SRC_DIR)/bebook && HB_DIR="$(THIRD_PARTY_DIR)/harfbuzz/src" $(MAKE) wiki
+# Into BeBook's folder, not its own: bewiki reads the fonts and the 80MB dictionary from
+# there, and its launch.sh cd's there before exec.
+	@mkdir -p "$(BEWIKI_OUT)/resources"
+	@cp $(SRC_DIR)/bebook/build/miyoomini/bewiki "$(BEWIKI_OUT)/"
+	@cp $(SRC_DIR)/bebook/resources/reading_list.tsv "$(BEWIKI_OUT)/resources/"
+	@$(ECHO) $(PRINT_DONE)
+
+sideload-bewiki:
+	@$(ECHO) $(PRINT_RECIPE)
+	@$(MAKE) sideload-bebook
+	@$(MAKE) bewiki BEWIKI_OUT="$(SIDELOAD_DIR)/BeBook"
+	@mkdir -p "$(SIDELOAD_DIR)/BeWiki"
+	@cp "$(STATIC_PACKAGES)/App/BeWiki/App/BeWiki/launch.sh" \
+	    "$(STATIC_PACKAGES)/App/BeWiki/App/BeWiki/bewiki.cfg" \
+	    "$(STATIC_PACKAGES)/App/BeWiki/App/BeWiki/config.json" \
+	    "$(SIDELOAD_DIR)/BeWiki/"
+	@chmod a+x "$(SIDELOAD_DIR)/BeWiki/launch.sh"
 	@$(ECHO) $(PRINT_DONE)
 
 sideload-bebook:

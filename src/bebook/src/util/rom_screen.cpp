@@ -76,13 +76,6 @@ std::string recent_rompath()
     return {};
 }
 
-// Zero-padded because FNV1A_Pippip_Yurii reads up to 8 bytes past the string.
-uint32_t hash_rom_path(const std::string &input)
-{
-    std::vector<char> padded(input.size() + 8, '\0');
-    std::memcpy(padded.data(), input.data(), input.size());
-    return FNV1A_Pippip_Yurii(padded.data(), input.size());
-}
 
 
 // Cover on the left, the page just read on the right, each scaled to fit its half.
@@ -134,16 +127,45 @@ surface_unique_ptr compose_tile(const SDL_Surface *page,
 
 } // namespace
 
-bool write_rom_screen(const SDL_Surface *surface, const std::filesystem::path &rom_path)
+uint32_t hash_rom_path(const std::string &input)
+{
+    std::vector<char> padded(input.size() + 8, '\0');
+    std::memcpy(padded.data(), input.data(), input.size());
+    return FNV1A_Pippip_Yurii(padded.data(), input.size());
+}
+
+namespace
+{
+
+bool write_tile_png(const SDL_Surface *surface, const std::string &key)
+{
+    std::error_code ec;
+    if (!std::filesystem::is_directory(ROM_SCREENS_DIR, ec) &&
+        !std::filesystem::create_directories(ROM_SCREENS_DIR, ec))
+    {
+        return false;
+    }
+
+    const std::filesystem::path out =
+        std::filesystem::path(ROM_SCREENS_DIR) /
+        (std::to_string(hash_rom_path(key)) + ".png");
+    return write_surface_png(surface, out.string());
+}
+
+} // namespace
+
+bool write_rom_screen_plain(const SDL_Surface *surface, const std::string &rom_path)
 {
     if (surface == nullptr || rom_path.empty())
     {
         return false;
     }
+    return write_tile_png(surface, rom_path);
+}
 
-    std::error_code ec;
-    if (!std::filesystem::is_directory(ROM_SCREENS_DIR, ec) &&
-        !std::filesystem::create_directories(ROM_SCREENS_DIR, ec))
+bool write_rom_screen(const SDL_Surface *surface, const std::filesystem::path &rom_path)
+{
+    if (surface == nullptr || rom_path.empty())
     {
         return false;
     }
@@ -159,10 +181,7 @@ bool write_rom_screen(const SDL_Surface *surface, const std::filesystem::path &r
             key = key.substr(colon + 1);
         }
     }
-    const std::filesystem::path out =
-        std::filesystem::path(ROM_SCREENS_DIR) /
-        (std::to_string(hash_rom_path(key)) + ".png");
 
     surface_unique_ptr tile = compose_tile(surface, rom_path);
-    return write_surface_png(tile ? tile.get() : surface, out.string());
+    return write_tile_png(tile ? tile.get() : surface, key);
 }

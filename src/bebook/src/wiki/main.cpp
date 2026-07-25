@@ -1,4 +1,5 @@
 #include "./reading_list.h"
+#include "./recents.h"
 #include "./wiki_config.h"
 #include "./wiki_context.h"
 #include "./views/article_view.h"
@@ -18,6 +19,7 @@
 
 #include "sys/keymap.h"
 #include "sys/screen.h"
+#include "util/debounced.h"
 #include "util/fps_limiter.h"
 #include "util/held_key_tracker.h"
 #include "util/key_value_file.h"
@@ -151,10 +153,52 @@ int main(int argc, char **argv)
     }
 
     // Optional second argument names an article to open, for development.
-    const std::string requested_article = argc >= 3 ? argv[2] : "";
+    std::string requested_article = argc >= 3 ? argv[2] : "";
+    DocAddr requested_address = 0;
+
+    // The Game Switcher resumes by handing back the stub we wrote, which carries the
+    // archive, the article and the position.
+    if (argc >= 2 && wiki_recents::is_stub_path(argv[1]))
+    {
+        std::string stub_zim;
+        std::string stub_article;
+        DocAddr stub_address = 0;
+        if (wiki_recents::read_stub(argv[1], stub_zim, stub_article, stub_address))
+        {
+            if (!stub_zim.empty())
+            {
+                zim_path = stub_zim;
+            }
+            requested_article = stub_article;
+            requested_address = stub_address;
+        }
+    }
 
     auto context = std::make_shared<WikiContext>();
     std::shared_ptr<ArticleView> article_view;
+
+    // The Game Switcher tile. Debounced so following five links in a row costs one set of
+    // SD writes rather than five, and so the frame captured is a settled article rather
+    // than one caught mid-navigation.
+    Debounced tile_write(2000);
+    std::string pending_tile_path;
+    std::string pending_tile_title;
+    DocAddr pending_tile_address = 0;
+
+    // One place, because the article view is created either from the reading list or by
+    // resuming, and both need identical bookkeeping.
+    auto install_on_change = [&]() {
+        article_view->set_on_change([&](const std::string &path, DocAddr at) {
+            state_store.set_setting(STORE_KEY_LAST_PATH, path);
+            state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
+            state_store.set_setting(STORE_KEY_READ_PREFIX + path, "1");
+
+            pending_tile_path = path;
+            pending_tile_title = article_view->current_title();
+            pending_tile_address = at;
+            tile_write.poke(SDL_GetTicks());
+        });
+    };
 
     if (!context->open(zim_path))
     {
@@ -168,7 +212,7 @@ int main(int argc, char **argv)
         // settings rather than via set_book_address, which is keyed per document and
         // would leave one stored entry per article ever opened.
         std::string start_path = requested_article;
-        DocAddr start_address = 0;
+        DocAddr start_address = requested_address;
 
         if (start_path.empty())
         {
@@ -199,12 +243,7 @@ int main(int argc, char **argv)
                     {
                         article_view = std::make_shared<ArticleView>(
                             context, path, 0, sys_styling, token_view_styling, view_stack);
-                        article_view->set_on_change(
-                            [&state_store](const std::string &at_path, DocAddr at) {
-                                state_store.set_setting(STORE_KEY_LAST_PATH, at_path);
-                                state_store.set_setting(STORE_KEY_LAST_ADDRESS,
-                                                        std::to_string(at));
-                            });
+                        install_on_change();
                     }
                     else if (!article_view->navigate_to(path))
                     {
@@ -239,11 +278,7 @@ int main(int argc, char **argv)
 
             if (!article_view->current_path().empty())
             {
-                article_view->set_on_change([&state_store](const std::string &path, DocAddr at) {
-                    state_store.set_setting(STORE_KEY_LAST_PATH, path);
-                    state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
-                    state_store.set_setting(STORE_KEY_READ_PREFIX + path, "1");
-                });
+                install_on_change();
                 view_stack.push(article_view);
             }
             else
@@ -352,6 +387,14 @@ int main(int argc, char **argv)
             }
         }
 
+        // `screen` still holds the last rendered frame, which by now is the settled
+        // article rather than one caught mid-navigation.
+        if (tile_write(SDL_GetTicks()) && !pending_tile_path.empty())
+        {
+            wiki_recents::save(zim_path, pending_tile_path, pending_tile_title,
+                               pending_tile_address, screen);
+        }
+
         if (!quit)
         {
             limit_fps();
@@ -362,6 +405,14 @@ int main(int argc, char **argv)
             idle_timer.reset();
             state_store.flush();
         }
+    }
+
+    // Whatever is still pending must land, or quitting straight after a navigation would
+    // leave the tile showing the previous article.
+    if (!pending_tile_path.empty())
+    {
+        wiki_recents::save(zim_path, pending_tile_path, pending_tile_title,
+                           pending_tile_address, screen);
     }
 
     view_stack.shutdown();

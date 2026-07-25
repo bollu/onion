@@ -1,0 +1,7 @@
+{
+"label":"BeWiki",
+"icon":"../../Icons/Default/app/wiki.png",
+"iconsel":"../../Icons/Default/app/wiki.png",
+"launch":"launch.sh",
+"description":"Offline Italian Wikipedia reader with dictionary lookup. Requires BeBook (shares its fonts and dictionary) and a .zim archive in Roms/WIKI."
+}
