@@ -130,7 +130,7 @@ include ./src/common/commands.mk
 
 ###########################################################
 
-.PHONY: all version core apps external bebook bewiki sideload-bewiki bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link sideload sideload-bebook sideload-systems release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
+.PHONY: all version core apps external bebook bewiki sideload-bewiki bedict sideload-bedict bebook-test bebook-test-image bebook-specimen bebook-shell container-prune container-prune-all demo-app music-player pc-link sideload sideload-bebook sideload-systems release clean deepclean git-clean toolchain toolchain-image with-toolchain patch lib test
 
 all: dist
 
@@ -288,6 +288,7 @@ music-player:
 # Package Manager catalogue.
 BEBOOK_OUT ?= $(BEBOOK_DEST)
 BEWIKI_OUT ?= $(BEBOOK_DEST)
+BEDICT_OUT ?= $(BEBOOK_DEST)
 bebook:
 	@$(ECHO) $(PRINT_RECIPE)
 # PREFIX comes from the toolchain image; bare on the host it is empty.
@@ -323,7 +324,7 @@ demo-app:
 
 # Drop-in App folders, copyable straight to /mnt/SDCARD without a reflash. MainUI
 # finds apps by scanning App/*/config.json (src/common/utils/apps.h).
-sideload: music-player demo-app pc-link sideload-bebook sideload-systems
+sideload: music-player demo-app pc-link sideload-bebook sideload-bewiki sideload-bedict sideload-systems
 	@$(ECHO) $(COLOR_BLUE)"\n-- Drop-in app folders ready in $(SIDELOAD_DIR)"$(COLOR_NORMAL)
 	@$(ECHO) $(PRINT_DONE)
 
@@ -365,6 +366,51 @@ sideload-bewiki:
 	    "$(STATIC_PACKAGES)/App/BeWiki/App/BeWiki/config.json" \
 	    "$(SIDELOAD_DIR)/BeWiki/"
 	@chmod a+x "$(SIDELOAD_DIR)/BeWiki/launch.sh"
+# BeWiki's config.json names ../../Icons/Default/app/wiki.png, which resolves to
+# /mnt/SDCARD/Icons/. MainUI shows no icon at all if it is missing, and no other
+# sideload target stages icons because no other sideloaded app has a config.json.
+	@mkdir -p "$(SIDELOAD_ROOT)/Icons/Default/app"
+	@cp "$(ROOT_DIR)/static/build/Icons/Default/app/wiki.png" \
+	    "$(SIDELOAD_ROOT)/Icons/Default/app/"
+# The archive is content, not a build product: staged when present, never fetched.
+# See src/bebook/tools/fetch_zim.sh.
+	@mkdir -p "$(SIDELOAD_ROOT)/Roms/WIKI"
+	@if ls $(SRC_DIR)/bebook/resources/wiki/*.zim >/dev/null 2>&1; then \
+	    cp $(SRC_DIR)/bebook/resources/wiki/*.zim "$(SIDELOAD_ROOT)/Roms/WIKI/"; \
+	else \
+	    $(ECHO) $(COLOR_BLUE)"   no .zim staged - run src/bebook/tools/fetch_zim.sh"$(COLOR_NORMAL); \
+	fi
+	@$(ECHO) $(PRINT_DONE)
+
+bedict:
+	@$(ECHO) $(PRINT_RECIPE)
+	@test -n "$(PREFIX)" || { \
+	    echo "bedict needs the cross toolchain sysroot (PREFIX is unset)."; \
+	    echo "Run it inside the container, e.g.:"; \
+	    echo "    make with-toolchain CMD=$(or $(MAKECMDGOALS),bedict)"; \
+	    exit 1; }
+	@cd $(SRC_DIR)/bebook && HB_DIR="$(THIRD_PARTY_DIR)/harfbuzz/src" $(MAKE) dict
+# Into BeBook's folder, not its own: bedict reads the fonts and the ~29MB dictionary from
+# there, and its launch.sh cd's there before exec. bedict.cfg sits beside the binary (the
+# cwd), where bedict looks for it, so its state lands under Saves/ rather than a dotfile here.
+	@cp $(SRC_DIR)/bebook/build/miyoomini/bedict "$(BEDICT_OUT)/"
+	@cp "$(STATIC_PACKAGES)/App/BeDict/App/BeDict/bedict.cfg" "$(BEDICT_OUT)/"
+	@$(ECHO) $(PRINT_DONE)
+
+sideload-bedict:
+	@$(ECHO) $(PRINT_RECIPE)
+	@$(MAKE) sideload-bebook
+	@$(MAKE) bedict BEDICT_OUT="$(SIDELOAD_DIR)/BeBook"
+	@mkdir -p "$(SIDELOAD_DIR)/BeDict"
+	@cp "$(STATIC_PACKAGES)/App/BeDict/App/BeDict/launch.sh" \
+	    "$(STATIC_PACKAGES)/App/BeDict/App/BeDict/config.json" \
+	    "$(SIDELOAD_DIR)/BeDict/"
+	@chmod a+x "$(SIDELOAD_DIR)/BeDict/launch.sh"
+# BeDict's config.json names ../../Icons/Default/app/search.png, which resolves to
+# /mnt/SDCARD/Icons/. As with BeWiki, stage the icon so MainUI has one to show.
+	@mkdir -p "$(SIDELOAD_ROOT)/Icons/Default/app"
+	@cp "$(ROOT_DIR)/static/build/Icons/Default/app/search.png" \
+	    "$(SIDELOAD_ROOT)/Icons/Default/app/"
 	@$(ECHO) $(PRINT_DONE)
 
 sideload-bebook:

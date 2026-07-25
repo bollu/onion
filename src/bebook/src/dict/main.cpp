@@ -17,6 +17,7 @@
 #include "sys/screen.h"
 #include "util/fps_limiter.h"
 #include "util/held_key_tracker.h"
+#include "util/key_value_file.h"
 #include "util/math.h"
 #include "util/sdl_font_cache.h"
 #include "util/timer.h"
@@ -60,7 +61,11 @@ int main(int, char **)
     SDL_Surface *screen = SDL_CreateRGBSurface(SDL_HWSURFACE, SCREEN_WIDTH, SCREEN_HEIGHT, 32, 0, 0, 0, 0);
     set_render_surface_format(screen->format);
 
-    StateStore state_store(DICT_STORE_PATH);
+    // Mirrors bewiki: the packaged app ships a bedict.cfg pointing store_path at Saves/;
+    // host runs without one fall back to a cwd-relative dotfile.
+    auto config = load_key_value(DICT_CONFIG_FILE_PATH);
+    config.try_emplace(DICT_CONFIG_KEY_STORE_PATH, DICT_STORE_PATH);
+    StateStore state_store(config[DICT_CONFIG_KEY_STORE_PATH]);
 
     auto init_font_name = get_valid_font_name(
         settings_get_font_name(state_store).value_or(DEFAULT_FONT_NAME));

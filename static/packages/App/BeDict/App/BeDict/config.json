@@ -1,0 +1,7 @@
+{
+"label":"BeDict",
+"icon":"../../Icons/Default/app/search.png",
+"iconsel":"../../Icons/Default/app/search.png",
+"launch":"launch.sh",
+"description":"Offline Italian dictionary: search words (including conjugated forms) with an on-screen keyboard and read glosses and conjugations. Requires BeBook (shares its fonts and dictionary)."
+}
