@@ -190,7 +190,8 @@ $(HB_OBJECT): $(HB_DIR)/harfbuzz.cc
 # WARNFLAGS (-pedantic-errors would reject it) and no -MMD (its dependency list is fixed).
 # The defines trim the build to what a read-only, single-threaded, embedded lookup needs.
 SQLITE_DEFINES := -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION \
-                  -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_TEMP_STORE=3 -DSQLITE_OMIT_DEPRECATED
+                  -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_TEMP_STORE=3 -DSQLITE_OMIT_DEPRECATED \
+                  -DSQLITE_ENABLE_FTS5  # trigram "did you mean" fuzzy word search
 $(SQLITE_OBJECT): $(SQLITE_DIR)/sqlite3.c
 	@if [ ! -f "$<" ]; then \
 		echo "sqlite amalgamation missing at $(SQLITE_DIR). Run: tools/fetch_sqlite.sh"; \

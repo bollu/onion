@@ -376,6 +376,21 @@ CREATE INDEX idx_conj_lemma      ON conj(lemma, tense, person);
 """
 
 
+def build_vocab(db):
+    """FTS5 trigram index over distinct (form_fold, lemma) pairs, for fuzzy 'did you mean'
+    lookup: querying the OR of a folded query's trigrams and ordering by `rank` finds the
+    closest words even when the first letter is wrong. Needs the runtime SQLite built with
+    -DSQLITE_ENABLE_FTS5 (see the Makefile); the host sqlite has FTS5, so this builds here.
+    Entries shorter than a trigram can never match, so they are skipped."""
+    db.execute("DROP TABLE IF EXISTS vocab")
+    db.execute("CREATE VIRTUAL TABLE vocab USING fts5(fold, lemma UNINDEXED, tokenize='trigram')")
+    db.execute(
+        "INSERT INTO vocab(fold, lemma) "
+        "SELECT DISTINCT form_fold, lemma FROM forms "
+        "WHERE form_fold IS NOT NULL AND length(form_fold) >= 3"
+    )
+
+
 def norm(s):
     """Lookup key normalization: lowercase. (Accents are significant in Italian.)"""
     return s.lower()
@@ -457,6 +472,7 @@ def build(out_path):
         add_word(db, lemma, pos, en, it)
 
     db.executescript(INDEXES)
+    build_vocab(db)
     db.execute("INSERT INTO meta VALUES ('schema_version', '1')")
     db.execute("INSERT INTO meta VALUES ('build', 'seed')")
     db.commit()
@@ -784,6 +800,7 @@ def ingest_kaikki(out_path, jsonl_path, limit=None):
         flush()
 
     db.executescript(INDEXES)
+    build_vocab(db)
     db.execute("INSERT INTO meta VALUES ('schema_version', '1')")
     db.execute("INSERT INTO meta VALUES ('build', 'kaikki')")
     db.execute("INSERT INTO meta VALUES ('source_url', 'https://kaikki.org/dictionary/Italian/')")
