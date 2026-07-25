@@ -137,3 +137,166 @@ Il mondo di oggi	Muro di Berlino	Muro_di_Berlino
 Il mondo di oggi	Unione europea	Unione_europea
 Il mondo di oggi	Globalizzazione	Globalizzazione
 Il mondo di oggi	Primavera araba	Primavera_araba
+
+# ---------------------------------------------------------------------------
+# Below: articles carrying it.wikipedia's own quality marks -- "Voci in vetrina"
+# (featured) and "Voci di qualità" (good). Of the 1213 such articles, 576 are
+# present in this archive; these are the historical ones.
+#
+# Chosen over a popular-articles list on purpose: the Wikimedia pageview API's
+# top Italian articles are the main page, the search page, and last month's
+# football -- popularity tracks the news cycle, not what is worth reading.
+# ---------------------------------------------------------------------------
+
+Battaglie decisive	Battaglia delle Termopili	Battaglia_delle_Termopili
+Battaglie decisive	Battaglia di Maratona	Battaglia_di_Maratona
+Battaglie decisive	Battaglia di Canne	Battaglia_di_Canne
+Battaglie decisive	Battaglia di Alesia	Battaglia_di_Alesia
+Battaglie decisive	Battaglia di Legnano	Battaglia_di_Legnano
+Battaglie decisive	Battaglia di Bannockburn	Battaglia_di_Bannockburn
+Battaglie decisive	Battaglia di Austerlitz	Battaglia_di_Austerlitz
+Battaglie decisive	Battaglia di Waterloo	Battaglia_di_Waterloo
+Battaglie decisive	Battaglia di Fort Sumter	Battaglia_di_Fort_Sumter
+Battaglie decisive	Prima battaglia della Marna	Prima_battaglia_della_Marna
+Battaglie decisive	Battaglia di Verdun	Battaglia_di_Verdun
+Battaglie decisive	Battaglia della Somme	Battaglia_della_Somme
+Battaglie decisive	Battaglia di Stalingrado	Battaglia_di_Stalingrado
+Battaglie decisive	Battaglia delle Midway	Battaglia_delle_Midway
+Battaglie decisive	Sbarco in Normandia	Sbarco_in_Normandia
+
+Roma: figure	Cleopatra	Cleopatra
+Roma: figure	Marco Tullio Cicerone	Marco_Tullio_Cicerone
+Roma: figure	Tiberio	Tiberio
+Roma: figure	Caligola	Caligola
+Roma: figure	Marco Aurelio	Marco_Aurelio
+Roma: figure	Eliogabalo	Eliogabalo
+Roma: figure	Agrippina maggiore	Agrippina_maggiore
+Roma: figure	Domiziano	Domiziano
+Roma: figure	Flavio Claudio Giuliano	Flavio_Claudio_Giuliano
+Roma: figure	Belisario	Belisario
+Roma: figure	Giustiniano I	Giustiniano_I
+Roma: figure	Galla Placidia	Galla_Placidia
+Roma: figure	Giulio Nepote	Giulio_Nepote
+
+Roma: imprese	Conquista della Gallia	Conquista_della_Gallia
+Roma: imprese	Conquista della Dacia	Conquista_della_Dacia
+Roma: imprese	Seconda guerra punica	Seconda_guerra_punica
+Roma: imprese	Terza guerra servile	Terza_guerra_servile
+Roma: imprese	Guerra gotica (535-553)	Guerra_gotica_(535-553)
+Roma: imprese	Legionario romano	Legionario_romano
+Roma: imprese	Marina militare romana	Marina_militare_romana
+Roma: imprese	Terme romane	Terme_romane
+Roma: imprese	Pompei (città antica)	Pompei_(città_antica)
+Roma: imprese	Scavi archeologici di Ercolano	Scavi_archeologici_di_Ercolano
+Roma: imprese	Foro di Traiano	Foro_di_Traiano
+
+Grecia e mondo ellenistico	Pericle	Pericle
+Grecia e mondo ellenistico	Temistocle	Temistocle
+Grecia e mondo ellenistico	Alcibiade	Alcibiade
+Grecia e mondo ellenistico	Epaminonda	Epaminonda
+Grecia e mondo ellenistico	Agatocle	Agatocle
+Grecia e mondo ellenistico	Aspasia di Mileto	Aspasia_di_Mileto
+Grecia e mondo ellenistico	Talete	Talete
+Grecia e mondo ellenistico	Archimede	Archimede
+Grecia e mondo ellenistico	Oplita	Oplita
+Grecia e mondo ellenistico	Spedizione ateniese in Sicilia	Spedizione_ateniese_in_Sicilia
+Grecia e mondo ellenistico	Tragedia greca	Tragedia_greca
+Grecia e mondo ellenistico	Arsinoe II	Arsinoe_II
+Grecia e mondo ellenistico	Lisimaco	Lisimaco
+Grecia e mondo ellenistico	Attalo I	Attalo_I
+Grecia e mondo ellenistico	Tolomeo II	Tolomeo_II
+
+Egitto e vicino oriente	Akhenaton	Akhenaton
+Egitto e vicino oriente	Tomba di Tutankhamon	Tomba_di_Tutankhamon
+Egitto e vicino oriente	Valle dei Re	Valle_dei_Re
+Egitto e vicino oriente	Ḫattuša	Ḫattuša
+
+Medioevo	Longobardi	Longobardi
+Medioevo	Regno longobardo	Regno_longobardo
+Medioevo	Celti	Celti
+Medioevo	Aroldo II d'Inghilterra	Aroldo_II_d'Inghilterra
+Medioevo	Conquista normanna dell'Italia meridionale	Conquista_normanna_dell'Italia_meridionale
+Medioevo	Terza crociata	Terza_crociata
+Medioevo	Giovanna d'Arco	Giovanna_d'Arco
+Medioevo	Magna Carta	Magna_Carta
+Medioevo	Lotta per le investiture	Lotta_per_le_investiture
+Medioevo	Papa Gregorio VII	Papa_Gregorio_VII
+Medioevo	Basilio II Bulgaroctono	Basilio_II_Bulgaroctono
+Medioevo	Giovanni II Comneno	Giovanni_II_Comneno
+Medioevo	Enrico V d'Inghilterra	Enrico_V_d'Inghilterra
+Medioevo	Luigi IX di Francia	Luigi_IX_di_Francia
+Medioevo	Repubbliche marinare	Repubbliche_marinare
+Medioevo	Alimentazione medievale	Alimentazione_medievale
+Medioevo	Università nel Medioevo	Università_nel_Medioevo
+Medioevo	Papa Silvestro II	Papa_Silvestro_II
+
+Rinascimento e prima età moderna	Cosimo de' Medici	Cosimo_de'_Medici
+Rinascimento e prima età moderna	Lorenzo de' Medici	Lorenzo_de'_Medici
+Rinascimento e prima età moderna	Lucrezia Borgia	Lucrezia_Borgia
+Rinascimento e prima età moderna	Francesco Sforza	Francesco_Sforza
+Rinascimento e prima età moderna	Gonzaga	Gonzaga
+Rinascimento e prima età moderna	Guerra della Lega di Cambrai	Guerra_della_Lega_di_Cambrai
+Rinascimento e prima età moderna	Maria Stuarda	Maria_Stuarda
+Rinascimento e prima età moderna	Carlo I d'Inghilterra	Carlo_I_d'Inghilterra
+Rinascimento e prima età moderna	Carlo II d'Inghilterra	Carlo_II_d'Inghilterra
+Rinascimento e prima età moderna	Enrico VII d'Inghilterra	Enrico_VII_d'Inghilterra
+Rinascimento e prima età moderna	Francesco I di Francia	Francesco_I_di_Francia
+Rinascimento e prima età moderna	Guerra di successione spagnola	Guerra_di_successione_spagnola
+Rinascimento e prima età moderna	Masaniello	Masaniello
+
+Rivoluzioni e Ottocento	Guerre napoleoniche	Guerre_napoleoniche
+Rivoluzioni e Ottocento	Andrea Massena	Andrea_Massena
+Rivoluzioni e Ottocento	Maria Antonietta d'Asburgo-Lorena	Maria_Antonietta_d'Asburgo-Lorena
+Rivoluzioni e Ottocento	Luigi XV di Francia	Luigi_XV_di_Francia
+Rivoluzioni e Ottocento	Giorgio III del Regno Unito	Giorgio_III_del_Regno_Unito
+Rivoluzioni e Ottocento	Aaron Burr	Aaron_Burr
+Rivoluzioni e Ottocento	Guerra franco-prussiana	Guerra_franco-prussiana
+Rivoluzioni e Ottocento	George Armstrong Custer	George_Armstrong_Custer
+
+La Grande Guerra	Crisi di luglio	Crisi_di_luglio
+La Grande Guerra	Prima guerra balcanica	Prima_guerra_balcanica
+La Grande Guerra	Fronte occidentale (1914-1918)	Fronte_occidentale_(1914-1918)
+La Grande Guerra	Fronte italiano (1915-1918)	Fronte_italiano_(1915-1918)
+La Grande Guerra	Campagna di Gallipoli	Campagna_di_Gallipoli
+La Grande Guerra	Sesta battaglia dell'Isonzo	Sesta_battaglia_dell'Isonzo
+La Grande Guerra	Battaglia del monte Ortigara	Battaglia_del_monte_Ortigara
+La Grande Guerra	Battaglia di Vittorio Veneto	Battaglia_di_Vittorio_Veneto
+
+La Seconda guerra mondiale	Conferenza di Monaco	Conferenza_di_Monaco
+La Seconda guerra mondiale	Notte dei cristalli	Notte_dei_cristalli
+La Seconda guerra mondiale	Campagna di Polonia	Campagna_di_Polonia
+La Seconda guerra mondiale	Battaglia di Dunkerque	Battaglia_di_Dunkerque
+La Seconda guerra mondiale	Assedio di Leningrado	Assedio_di_Leningrado
+La Seconda guerra mondiale	Attacco di Pearl Harbor	Attacco_di_Pearl_Harbor
+La Seconda guerra mondiale	Conferenza di Wannsee	Conferenza_di_Wannsee
+La Seconda guerra mondiale	Operazione Urano	Operazione_Urano
+La Seconda guerra mondiale	Seconda battaglia di El Alamein	Seconda_battaglia_di_El_Alamein
+La Seconda guerra mondiale	Operazione Bagration	Operazione_Bagration
+La Seconda guerra mondiale	Sbarco in Sicilia	Sbarco_in_Sicilia
+La Seconda guerra mondiale	Sbarco di Anzio	Sbarco_di_Anzio
+La Seconda guerra mondiale	Battaglia di Cassino	Battaglia_di_Cassino
+La Seconda guerra mondiale	Linea Gotica	Linea_Gotica
+La Seconda guerra mondiale	Operazione Market Garden	Operazione_Market_Garden
+La Seconda guerra mondiale	Offensiva delle Ardenne	Offensiva_delle_Ardenne
+La Seconda guerra mondiale	Battaglia di Iwo Jima	Battaglia_di_Iwo_Jima
+La Seconda guerra mondiale	Battaglia di Okinawa	Battaglia_di_Okinawa
+La Seconda guerra mondiale	Battaglia del Golfo di Leyte	Battaglia_del_Golfo_di_Leyte
+La Seconda guerra mondiale	Wehrmacht	Wehrmacht
+La Seconda guerra mondiale	Marina imperiale giapponese	Marina_imperiale_giapponese
+La Seconda guerra mondiale	USS Indianapolis (CA-35)	USS_Indianapolis_(CA-35)
+
+Esplorazioni	Spedizione Endurance	Spedizione_Endurance
+Esplorazioni	Spedizione Terra Nova	Spedizione_Terra_Nova
+Esplorazioni	Fratelli Wright	Fratelli_Wright
+Esplorazioni	Programma Apollo	Programma_Apollo
+Esplorazioni	Apollo 8	Apollo_8
+Esplorazioni	Apollo 11	Apollo_11
+Esplorazioni	Neil Armstrong	Neil_Armstrong
+
+Guerra fredda e dopo	Guerra d'inverno	Guerra_d'inverno
+Guerra fredda e dopo	Guerra sovietico-polacca	Guerra_sovietico-polacca
+Guerra fredda e dopo	Crisi dei missili di Cuba	Crisi_dei_missili_di_Cuba
+Guerra fredda e dopo	Partito Comunista dell'Unione Sovietica	Partito_Comunista_dell'Unione_Sovietica
+Guerra fredda e dopo	Guerra in Afghanistan (1979-1989)	Guerra_in_Afghanistan_(1979-1989)
+Guerra fredda e dopo	Guerra delle Falkland	Guerra_delle_Falkland
+Guerra fredda e dopo	Stati con armi nucleari	Stati_con_armi_nucleari
