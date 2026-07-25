@@ -39,6 +39,13 @@ void removeCurrentItem()
 {
     Game_s *game = &game_list[appState.current_game];
 
+    // Pinned apps (BeDict/BeWiki) are always-available and not backed by a Recents line
+    // (lineNo == -1); there is nothing to delete, and deleting line -1 would corrupt the
+    // file. Removal is a no-op for them.
+    if (game->is_pinned) {
+        return;
+    }
+
     printf_debug("removing: %s\n", game->name);
     printf_debug("linenumber: %i\n", game->recentItem.lineNo);
 

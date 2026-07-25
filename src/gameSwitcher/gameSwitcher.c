@@ -177,8 +177,15 @@ int main(int argc, char *argv[])
         overlay_resume();
     }
     else {
-        printf_debug("Resuming game - current_game : %i - index: %i\n", appState.current_game, game_list[appState.current_game].index);
-        resumeGame(game_list[appState.current_game].index);
+        Game_s *game = &game_list[appState.current_game];
+        if (game->is_pinned) {
+            printf_debug("Launching pinned app: %s\n", game->recentItem.label);
+            launchPinnedApp(game);
+        }
+        else {
+            printf_debug("Resuming game - current_game : %i - index: %i\n", appState.current_game, game->index);
+            resumeGame(game->index);
+        }
         overlay_exit();
         render_showFullscreenMessage("LOADING", true);
     }

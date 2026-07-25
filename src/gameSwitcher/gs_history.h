@@ -80,12 +80,93 @@ void setEntryDefaultValues(Game_s *game, int index)
     game->totalTime[0] = '\0';
     game->processed = false;
     game->is_running = false;
+    game->is_pinned = false;
 
     strcpy(game->name, "");
     strcpy(game->shortname, "");
     strcpy(game->core_name, "");
     strcpy(game->core_path, "");
     game->index = index;
+}
+
+// Apps that are always offered in the Game Switcher, even when they are not in Recents, so
+// they can be reached from anywhere with a single MENU press. launch is each app's launch.sh;
+// rompath doubles as the launch argument, and both bedict and bewiki ignore an argument that
+// is not a document/stub, so pointing it back at launch.sh just opens the app fresh.
+typedef struct {
+    const char *label;
+    const char *launch;
+} PinnedApp;
+
+static const PinnedApp PINNED_APPS[] = {
+    {"BeDict", "/mnt/SDCARD/App/BeDict/launch.sh"},
+    {"BeWiki", "/mnt/SDCARD/App/BeWiki/launch.sh"},
+};
+
+// Append the always-available apps that are installed but not already present in Recents.
+// numRecents is advanced past whatever is added. Duplicates (the app was launched recently
+// and so is already in the list) are skipped by matching launch paths.
+void appendPinnedApps(int *numRecents)
+{
+    for (size_t p = 0; p < sizeof(PINNED_APPS) / sizeof(PINNED_APPS[0]); p++) {
+        const PinnedApp *app = &PINNED_APPS[p];
+
+        if (!exists(app->launch)) {
+            continue; // app not installed on this device
+        }
+
+        bool already_listed = false;
+        for (int i = 0; i < *numRecents; i++) {
+            if (strcmp(game_list[i].recentItem.launch, app->launch) == 0) {
+                already_listed = true;
+                break;
+            }
+        }
+        if (already_listed) {
+            continue;
+        }
+
+        if (*numRecents >= MAX_HISTORY) {
+            break;
+        }
+
+        Game_s *game = &game_list[*numRecents];
+        RecentItem *item = &game->recentItem;
+        memset(item, 0, sizeof(*item));
+        strncpy(item->label, app->label, sizeof(item->label) - 1);
+        strncpy(item->launch, app->launch, sizeof(item->launch) - 1);
+        strncpy(item->rompath, app->launch, sizeof(item->rompath) - 1);
+        item->type = 17;
+        item->lineNo = -1; // not backed by a Recents line
+
+        setEntryDefaultValues(game, *numRecents);
+        // Pre-fill the display fields and mark processed so processItem() (which would derive
+        // a name from rompath, i.e. "launch") leaves the label untouched.
+        game->is_pinned = true;
+        game->processed = true;
+        strcpy(game->name, app->label);
+        strcpy(game->shortname, app->label);
+
+        (*numRecents)++;
+    }
+}
+
+// Launch a pinned app directly. resumeGame() locates an entry by its position in the Recents
+// file; pinned apps are not in that file, so they are launched by writing the run command the
+// same way resumeGame() does for a normal entry.
+void launchPinnedApp(Game_s *game)
+{
+    FILE *fp;
+    char launchCommand[STR_MAX * 6];
+    // Same shape as resumeGame()'s launch command; snprintf because recentItem's launch and
+    // rompath fields are each STR_MAX * 2 wide.
+    snprintf(launchCommand, sizeof(launchCommand),
+             "LD_PRELOAD=/mnt/SDCARD/miyoo/app/../lib/libpadsp.so \"%s\" \"%s\"",
+             game->recentItem.launch, game->recentItem.rompath);
+
+    remove("/mnt/SDCARD/.tmp_update/.runGameSwitcher");
+    file_put_sync(fp, CMD_TO_RUN_PATH, "%s", launchCommand);
+    sync();
 }
 
 /**
@@ -142,6 +223,10 @@ void readHistory()
     }
 
     fclose(file);
+
+    // Pin the always-available apps (BeDict/BeWiki) after the real Recents.
+    appendPinnedApps(&numRecents);
+
     game_list_len = numRecents;
 }
 

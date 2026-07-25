@@ -43,6 +43,10 @@ typedef struct {
     int index;
     bool processed;
     bool is_running;
+    // Pinned entries (e.g. BeDict/BeWiki) are injected by readHistory() rather than read
+    // from the Recents file, so they are always available even if never launched. They are
+    // launched directly (launchPinnedApp) instead of resumeGame(), which indexes the file.
+    bool is_pinned;
 } Game_s;
 
 static Game_s game_list[MAX_HISTORY];
