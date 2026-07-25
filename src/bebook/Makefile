@@ -121,7 +121,7 @@ ZIM_SRC      := $(wildcard src/filetypes/zim/*.cpp)
 WIKI_LIB_SRC := $(filter-out src/wiki/main.cpp, $(wildcard src/wiki/*.cpp src/wiki/views/*.cpp))
 WIKI_SRC     := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) src/wiki/main.cpp
 # text_specimen.cpp has its own main() and is built as a separate target.
-SANDBOX_SRC  := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wildcard src/sandbox/*.cpp))
+SANDBOX_SRC  := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(wildcard src/dict/views/*.cpp) $(filter-out src/sandbox/text_specimen.cpp, $(wildcard src/sandbox/*.cpp))
 
 # Standalone type-specimen renderer. Depends only on the text engine, SDL and FreeType,
 # deliberately: typography can then be iterated on without a working epub/zip/xml stack.
@@ -136,19 +136,26 @@ APP_WIKI_TARGET := bewiki
 APP_SANDBOX_TARGET := sandbox
 APP_TEST_TARGET := test
 
+# bedict: the standalone dictionary app (search + on-screen keyboard). Reuses the reader's
+# common code + lexicon; needs no ZIM/zstd. Its own main lives under src/dict.
+DICTAPP_SRC     := $(COMMON_SRC) $(wildcard src/dict/*.cpp src/dict/views/*.cpp)
+APP_DICT_TARGET := bedict
+
 ROTOZOOM_OBJECT := $(OBJ_DIR)/SDL_rotozoom.o
 READER_OBJECTS  := $(READER_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
 WIKI_OBJECTS    := $(WIKI_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT) $(ZSTD_OBJECT)
+DICTAPP_OBJECTS := $(DICTAPP_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
 SANDBOX_OBJECTS := $(SANDBOX_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT) $(ZSTD_OBJECT)
 TEST_OBJECTS    := $(TEST_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT) $(ZSTD_OBJECT)
 
 DEPENDENCIES := \
 	    $(READER_OBJECTS:.o=.d)  \
 	    $(WIKI_OBJECTS:.o=.d)    \
+	    $(DICTAPP_OBJECTS:.o=.d) \
 	    $(SANDBOX_OBJECTS:.o=.d) \
 	    $(TEST_OBJECTS:.o=.d)
 
-all: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET) $(APP_DIR)/$(APP_WIKI_TARGET) $(APP_DIR)/$(APP_SANDBOX_TARGET)
+all: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET) $(APP_DIR)/$(APP_WIKI_TARGET) $(APP_DIR)/$(APP_DICT_TARGET) $(APP_DIR)/$(APP_SANDBOX_TARGET)
 
 # Just the reader. This is what the Onion build calls: the sandbox harnesses are
 # developer tools and nothing ships them.
@@ -156,6 +163,9 @@ reader: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET)
 
 # Just the wiki reader, for the Onion build's bewiki target.
 wiki: build $(DICT) $(APP_DIR)/$(APP_WIKI_TARGET)
+
+# Just the dictionary app, for the Onion build's bedict target.
+dict: build $(DICT) $(APP_DIR)/$(APP_DICT_TARGET)
 
 # The Italian dictionary DB ships compressed in git (resources/italian.sqlite.xz, ~16MB);
 # the raw ~80MB .sqlite is gitignored and unpacked here on demand. Runtime + tests read the
@@ -221,6 +231,10 @@ $(APP_DIR)/$(APP_WIKI_TARGET): $(WIKI_OBJECTS)
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+$(APP_DIR)/$(APP_DICT_TARGET): $(DICTAPP_OBJECTS)
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
 $(APP_DIR)/$(APP_SANDBOX_TARGET): $(SANDBOX_OBJECTS)
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
@@ -242,7 +256,7 @@ $(APP_DIR)/specimen: $(SPECIMEN_OBJECTS)
 
 -include $(DEPENDENCIES)
 
-.PHONY: all reader wiki build clean debug release run_tests specimen
+.PHONY: all reader wiki dict build clean debug release run_tests specimen
 
 test: $(DICT) $(APP_DIR)/$(APP_TEST_TARGET)
 	$(APP_DIR)/$(APP_TEST_TARGET)

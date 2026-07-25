@@ -388,6 +388,12 @@ std::vector<SearchHit> LexiconService::search(const std::string &query, int max_
 
     std::unordered_set<std::string> seen;
     auto add = [&](std::string word, std::string lemma) {
+        // Skip multiword entries (idioms like "far battere il cuore"): the app searches
+        // single words, and they only clutter the incremental list.
+        if (word.find(' ') != std::string::npos)
+        {
+            return;
+        }
         std::string key = word + '\x01' + lemma;
         if (seen.insert(key).second)
         {
