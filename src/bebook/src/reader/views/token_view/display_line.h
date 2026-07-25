@@ -2,11 +2,13 @@
 #define DISPLAY_LINE_H_
 
 #include "doc_api/doc_addr.h"
+#include "doc_api/doc_token.h"
 #include "text/styled_text.h"
 #include "text/text_types.h"
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 struct DisplayLine
 {
@@ -43,6 +45,9 @@ struct TextLine: public DisplayLine
     // Styling of this line only, with offsets rebased to the start of `text`. Empty when
     // the line is entirely Regular, which lets rendering take the unstyled fast path.
     std::vector<text::StyleRun> style_runs;
+
+    // Links crossing this line, rebased the same way. Only the wiki reader fills these.
+    std::vector<LinkRun> link_runs;
 
     TextLine(DocAddr addr, const std::string& text, bool centered = false);
     virtual ~TextLine() = default;

@@ -1,5 +1,6 @@
 #include "./token_line_scroller.h"
 
+#include "doc_api/link_runs.h"
 #include "doc_api/token_addressing.h"
 #include "sys/screen.h"
 #include "util/sdl_utils.h"
@@ -85,18 +86,21 @@ std::vector<std::unique_ptr<DisplayLine>> TokenLineScroller::render_display_line
         std::string text;
         uint32_t extra_text_width = 0;
         std::vector<text::StyleRun> style_runs;
+        std::vector<LinkRun> link_runs;
 
         if (token.type == TokenType::Text)
         {
             const auto &text_token = static_cast<const TextDocToken &>(token);
             text = text_token.text;
             style_runs = text_token.style_runs;
+            link_runs = text_token.link_runs;
         }
         else if (token.type == TokenType::ListItem)
         {
             const ListItemDocToken &list_token = static_cast<const ListItemDocToken &>(token);
             int nest_level = list_token.nest_level;
             style_runs = list_token.style_runs;
+            link_runs = list_token.link_runs;
             std::string prefix = std::string(
                 (nest_level > 1 ? nest_level - 1 : 0) * 2,
                 ' '
@@ -109,12 +113,14 @@ std::vector<std::unique_ptr<DisplayLine>> TokenLineScroller::render_display_line
             {
                 run.offset += static_cast<uint32_t>(prefix.size());
             }
+            shift_link_runs(link_runs, static_cast<uint32_t>(prefix.size()));
         }
         else if (token.type == TokenType::Header)
         {
             const auto &header_token = static_cast<const HeaderDocToken &>(token);
             text = header_token.text;
             style_runs = header_token.style_runs;
+            link_runs = header_token.link_runs;
         }
         else
         {
@@ -139,6 +145,11 @@ std::vector<std::unique_ptr<DisplayLine>> TokenLineScroller::render_display_line
             {
                 display_line->style_runs =
                     text::slice_runs(style_runs, laid_out.offset, laid_out.length);
+            }
+            if (!link_runs.empty())
+            {
+                display_line->link_runs =
+                    slice_link_runs(link_runs, laid_out.offset, laid_out.length);
             }
             lines.push_back(std::move(display_line));
 

@@ -5,6 +5,7 @@
 #include "./word_layout.h"
 
 #include "doc_api/doc_reader.h"
+#include "doc_api/link_runs.h"
 #include "reader/config.h"
 #include "reader/system_styling.h"
 #include "reader/shoulder_keymap.h"
@@ -89,20 +90,29 @@ text::Align line_align(const TextLine *tl)
     return tl->centered ? text::Align::Center : text::Align::Justify;
 }
 
-// On-screen x-range of word [span.start, span.end) in a laid-out line, via the shared
-// text::pen_x_at so the highlight geometry uses the exact same justification math as the
-// glyph drawing (no re-implementation to drift out of sync).
-WordBox word_box(
+// On-screen x-range of byte range [start, end) in a laid-out line, via the shared
+// text::pen_x_at so the geometry uses the exact same justification math as the glyph
+// drawing (no re-implementation to drift out of sync). Used for both the word-selection
+// highlight and link underlines.
+WordBox span_box(
     const TextLine *tl, const text::Font *font, int text_width, int margin_x,
-    const WordSpan &span
+    uint32_t start, uint32_t end
 )
 {
     text::StyledText styled = styled_for(tl, font);
     const text::Line ln = as_text_line(tl);
     const text::Align align = line_align(tl);
-    const int x0 = text::pen_x_at(styled, ln, span.start, margin_x, text_width, align);
-    const int x1 = text::pen_x_at(styled, ln, span.end, margin_x, text_width, align);
+    const int x0 = text::pen_x_at(styled, ln, start, margin_x, text_width, align);
+    const int x1 = text::pen_x_at(styled, ln, end, margin_x, text_width, align);
     return {x0, x1};
+}
+
+WordBox word_box(
+    const TextLine *tl, const text::Font *font, int text_width, int margin_x,
+    const WordSpan &span
+)
+{
+    return span_box(tl, font, text_width, margin_x, span.start, span.end);
 }
 
 // Words in the display line at relative offset `rel`, or empty if it is not a text line.
@@ -159,6 +169,11 @@ struct TokenViewState
     int ws_line = 0;
     int ws_word = 0;
     std::function<void(const std::string &)> on_open_word;
+
+    // Set by the wiki reader only. Moves the dictionary from A to X and gives A to link
+    // following; see ws_handle_key.
+    bool link_mode = false;
+    std::function<void(const std::string &)> on_follow_link;
 
     bool word_select() const { return mode == TokenViewMode::WordSelect; }
 
@@ -391,6 +406,49 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
 
         line_y += line_height;
+    }
+
+    // Link underlines. Only the wiki reader produces link runs, so this loop costs epubs
+    // nothing. Drawn before the word-select highlight so the highlight sits on top.
+    // ColorTheme has no link colour, and adding one would touch every theme, so links are
+    // marked with a rule in the secondary text colour rather than by recolouring glyphs.
+    for (int i = 0; i < num_text_display_lines; ++i)
+    {
+        const DisplayLine *line = state->line_scroller.get_line_relative(i);
+        if (!line || line->type != DisplayLine::Type::Text)
+        {
+            continue;
+        }
+
+        const auto *tl = static_cast<const TextLine *>(line);
+        if (tl->link_runs.empty())
+        {
+            continue;
+        }
+
+        const int rule_y = padding_y + i * line_height + leading_above + ascent + 2;
+        const auto &fg = theme.secondary_text;
+        const Uint32 rule_colour = SDL_MapRGB(dest_surface->format, fg.r, fg.g, fg.b);
+
+        for (const auto &link : tl->link_runs)
+        {
+            const WordBox lb = span_box(
+                tl, font, state->text_width(), margin_x,
+                link.offset, link.offset + link.length
+            );
+            if (lb.x1 <= lb.x0)
+            {
+                continue;
+            }
+
+            SDL_Rect rule = {
+                static_cast<Sint16>(lb.x0),
+                static_cast<Sint16>(rule_y),
+                static_cast<Uint16>(lb.x1 - lb.x0),
+                1
+            };
+            SDL_FillRect(dest_surface, &rule, rule_colour);
+        }
     }
 
     // Word-selection highlight. Drawn after the body text so it sits on top: a filled
@@ -752,6 +810,16 @@ void TokenView::set_on_open_word(std::function<void(const std::string &)> callba
     state->on_open_word = std::move(callback);
 }
 
+void TokenView::set_link_mode(bool enabled)
+{
+    state->link_mode = enabled;
+}
+
+void TokenView::set_on_follow_link(std::function<void(const std::string &)> callback)
+{
+    state->on_follow_link = std::move(callback);
+}
+
 int TokenView::scroll_reporting(int n)
 {
     const int before = state->line_scroller.get_line_number();
@@ -793,8 +861,19 @@ void TokenView::ws_handle_key(SDLKey key)
         case SW_BTN_RIGHT: ws_move_word(1); break;
         case SW_BTN_UP:    ws_move_line(-1); break;
         case SW_BTN_DOWN:  ws_move_line(1); break;
-        case SW_BTN_A:     ws_open_selected(); break;
         case SW_BTN_B:     ws_exit(); break;
+
+        // A is the primary action, which differs by app: bebook has nowhere to navigate,
+        // so A opens the dictionary; the wiki reader follows the link and moves the
+        // dictionary to X. Gated on an explicit flag rather than on whether a callback
+        // happens to be set, so wiring one up can never silently rebind A.
+        case SW_BTN_A:
+            if (state->link_mode) { ws_follow_selected(); } else { ws_open_selected(); }
+            break;
+        case SW_BTN_X:
+            if (state->link_mode) { ws_open_selected(); }
+            break;
+
         default: break;
     }
 }
@@ -887,26 +966,57 @@ bool TokenView::ws_walk(int dir)
     return false;
 }
 
-void TokenView::ws_open_selected()
+// The line and word span currently under the highlight, or false if there is none.
+bool TokenView::ws_selected_span(const TextLine **out_line, WordSpan *out_span) const
 {
-    if (!state->word_select() || !state->on_open_word)
+    if (!state->word_select())
     {
-        return;
+        return false;
     }
 
     auto spans = spans_at(state->line_scroller, state->ws_line);
     if (state->ws_word < 0 || state->ws_word >= (int)spans.size())
     {
-        return;
+        return false;
     }
 
     const DisplayLine *line = state->line_scroller.get_line_relative(state->ws_line);
     if (!line || line->type != DisplayLine::Type::Text)
     {
+        return false;
+    }
+
+    *out_line = static_cast<const TextLine *>(line);
+    *out_span = spans[state->ws_word];
+    return true;
+}
+
+void TokenView::ws_open_selected()
+{
+    const TextLine *tl = nullptr;
+    WordSpan sp{0, 0};
+    if (!state->on_open_word || !ws_selected_span(&tl, &sp))
+    {
         return;
     }
-    const auto *tl = static_cast<const TextLine *>(line);
-    const WordSpan &sp = spans[state->ws_word];
 
     state->on_open_word(tl->text.substr(sp.start, sp.end - sp.start));
+}
+
+void TokenView::ws_follow_selected()
+{
+    const TextLine *tl = nullptr;
+    WordSpan sp{0, 0};
+    if (!state->on_follow_link || !ws_selected_span(&tl, &sp))
+    {
+        return;
+    }
+
+    // Overlap rather than containment: tokenize_words drops leading punctuation, so a
+    // word inside «Roma» starts a byte after the link its glyphs sit under.
+    const LinkRun *link = link_run_overlapping(tl->link_runs, sp.start, sp.end);
+    if (link != nullptr)
+    {
+        state->on_follow_link(link->target);
+    }
 }
