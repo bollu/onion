@@ -11,6 +11,9 @@ __pycache__/
 # Vendored SQLite amalgamation, fetched by tools/fetch_sqlite.sh (like the HarfBuzz submodule).
 third-party/sqlite/
 
+# Vendored zstd decoder amalgamation, fetched by tools/fetch_zstd.sh.
+third-party/zstd/
+
 # Wiktextract (kaikki.org) Italian dump, fetched by tools/fetch_kaikki.sh. ~761MB build
 # input for build_lexicon.py.
 third-party/kaikki/

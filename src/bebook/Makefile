@@ -77,6 +77,11 @@ HB_CXXFLAGS := -DHAVE_FREETYPE=1 -DHB_NO_MT -I$(HB_DIR) $(FREETYPE_CFLAGS)
 SQLITE_DIR    ?= third-party/sqlite
 SQLITE_OBJECT := $(OBJ_DIR)/sqlite3_amalgam.o
 
+# zstd decompresses ZIM clusters for bewiki. Same amalgamation treatment as SQLite, from
+# zstd's decoder-only single-file build. Fetch it with tools/fetch_zstd.sh.
+ZSTD_DIR    ?= third-party/zstd
+ZSTD_OBJECT := $(OBJ_DIR)/zstddeclib.o
+
 # On the device everything lives at the default prefix, so plain -l flags resolve. On a
 # desktop the libraries sit under an arbitrary prefix (e.g. Homebrew), so ask
 # pkg-config for both the search paths and the include dirs.
@@ -102,7 +107,7 @@ endif
 # free to drift out of step with it. Safe to add wholesale -- bebook's own headers
 # live under util/ and sys/, Onion's under utils/ and system/, so nothing shadows.
 ONION_COMMON := ../common
-INCLUDE  := -Isrc -I$(ONION_COMMON) $(DEP_CFLAGS) -I$(HB_DIR) -I$(SQLITE_DIR) $(FREETYPE_CFLAGS) $(SDL_CFLAGS)
+INCLUDE  := -Isrc -I$(ONION_COMMON) $(DEP_CFLAGS) -I$(HB_DIR) -I$(SQLITE_DIR) -I$(ZSTD_DIR) $(FREETYPE_CFLAGS) $(SDL_CFLAGS)
 
 # Appended only once every pkg-config-derived variable above exists. LDFLAGS is a :=
 # variable, so referencing them any earlier would silently expand to nothing.
@@ -111,8 +116,12 @@ LDFLAGS := $(LDFLAGS) $(SDL_LIBS) $(FREETYPE_LIBS) $(DEP_LIBS)
 ROTOZOOM_SRC := src/extern/rotozoom/SDL_rotozoom.c
 COMMON_SRC   := $(filter-out src/reader/main.cpp, $(wildcard src/filetypes/*.cpp src/filetypes/txt/*.cpp src/filetypes/epub/*.cpp src/reader/*.cpp src/reader/views/*.cpp src/reader/views/token_view/*.cpp src/sys/*.cpp src/text/*.cpp src/util/*.cpp src/doc_api/*.cpp src/lexicon/*.cpp src/extern/hash-library/*.cpp))
 READER_SRC   := $(COMMON_SRC) src/reader/main.cpp
+# bewiki: the ZIM reader plus its own views. Its own main is filtered out for TEST_SRC.
+ZIM_SRC      := $(wildcard src/filetypes/zim/*.cpp)
+WIKI_LIB_SRC := $(filter-out src/wiki/main.cpp, $(wildcard src/wiki/*.cpp src/wiki/views/*.cpp))
+WIKI_SRC     := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) src/wiki/main.cpp
 # text_specimen.cpp has its own main() and is built as a separate target.
-SANDBOX_SRC  := $(COMMON_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wildcard src/sandbox/*.cpp))
+SANDBOX_SRC  := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wildcard src/sandbox/*.cpp))
 
 # Standalone type-specimen renderer. Depends only on the text engine, SDL and FreeType,
 # deliberately: typography can then be iterated on without a working epub/zip/xml stack.
@@ -120,27 +129,33 @@ SANDBOX_SRC  := $(COMMON_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wild
 # uses; without it the link fails on SDL_Deleter::operator().
 SPECIMEN_SRC     := src/sandbox/text_specimen.cpp $(wildcard src/text/*.cpp) src/util/sdl_pointer.cpp
 SPECIMEN_OBJECTS := $(SPECIMEN_SRC:%.cpp=$(OBJ_DIR)/%.o) $(HB_OBJECT)
-TEST_SRC     := $(COMMON_SRC) $(wildcard src/sys/tests/*.cpp src/reader/tests/*.cpp src/filetypes/epub/tests/*.cpp src/util/tests/*.cpp src/doc_api/tests/*.cpp src/text/tests/*.cpp src/lexicon/tests/*.cpp)
+TEST_SRC     := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(wildcard src/sys/tests/*.cpp src/reader/tests/*.cpp src/filetypes/epub/tests/*.cpp src/filetypes/zim/tests/*.cpp src/util/tests/*.cpp src/doc_api/tests/*.cpp src/text/tests/*.cpp src/lexicon/tests/*.cpp src/wiki/tests/*.cpp)
 
 APP_READER_TARGET := bebook
+APP_WIKI_TARGET := bewiki
 APP_SANDBOX_TARGET := sandbox
 APP_TEST_TARGET := test
 
 ROTOZOOM_OBJECT := $(OBJ_DIR)/SDL_rotozoom.o
 READER_OBJECTS  := $(READER_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
-SANDBOX_OBJECTS := $(SANDBOX_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
-TEST_OBJECTS    := $(TEST_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT)
+WIKI_OBJECTS    := $(WIKI_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT) $(ZSTD_OBJECT)
+SANDBOX_OBJECTS := $(SANDBOX_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT) $(ZSTD_OBJECT)
+TEST_OBJECTS    := $(TEST_SRC:%.cpp=$(OBJ_DIR)/%.o) $(ROTOZOOM_OBJECT) $(HB_OBJECT) $(SQLITE_OBJECT) $(ZSTD_OBJECT)
 
 DEPENDENCIES := \
 	    $(READER_OBJECTS:.o=.d)  \
+	    $(WIKI_OBJECTS:.o=.d)    \
 	    $(SANDBOX_OBJECTS:.o=.d) \
 	    $(TEST_OBJECTS:.o=.d)
 
-all: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET) $(APP_DIR)/$(APP_SANDBOX_TARGET)
+all: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET) $(APP_DIR)/$(APP_WIKI_TARGET) $(APP_DIR)/$(APP_SANDBOX_TARGET)
 
 # Just the reader. This is what the Onion build calls: the sandbox harnesses are
 # developer tools and nothing ships them.
 reader: build $(DICT) $(APP_DIR)/$(APP_READER_TARGET)
+
+# Just the wiki reader, for the Onion build's bewiki target.
+wiki: build $(DICT) $(APP_DIR)/$(APP_WIKI_TARGET)
 
 # The Italian dictionary DB ships compressed in git (resources/italian.sqlite.xz, ~16MB);
 # the raw ~80MB .sqlite is gitignored and unpacked here on demand. Runtime + tests read the
@@ -184,11 +199,24 @@ $(SQLITE_OBJECT): $(SQLITE_DIR)/sqlite3.c
 	@mkdir -p $(@D)
 	$(CROSS_COMPILE)cc $(CPPFLAGS) -O2 $(SQLITE_DEFINES) -I$(SQLITE_DIR) -c $< -o $@
 
+# zstd decoder amalgamation: C, so cc rather than the C++ driver; no WARNFLAGS, no -MMD.
+$(ZSTD_OBJECT): $(ZSTD_DIR)/zstddeclib.c
+	@if [ ! -f "$<" ]; then \
+		echo "zstd decoder missing at $(ZSTD_DIR). Run: tools/fetch_zstd.sh"; \
+		exit 1; \
+	fi
+	@mkdir -p $(@D)
+	$(CROSS_COMPILE)cc $(CPPFLAGS) -O2 -I$(ZSTD_DIR) -c $< -o $@
+
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(INCLUDE) $(WARNFLAGS) -c $< -MMD -o $@
 
 $(APP_DIR)/$(APP_READER_TARGET): $(READER_OBJECTS)
+	@mkdir -p $(@D)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(APP_DIR)/$(APP_WIKI_TARGET): $(WIKI_OBJECTS)
 	@mkdir -p $(@D)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
@@ -213,7 +241,7 @@ $(APP_DIR)/specimen: $(SPECIMEN_OBJECTS)
 
 -include $(DEPENDENCIES)
 
-.PHONY: all reader build clean debug release run_tests specimen
+.PHONY: all reader wiki build clean debug release run_tests specimen
 
 test: $(DICT) $(APP_DIR)/$(APP_TEST_TARGET)
 	$(APP_DIR)/$(APP_TEST_TARGET)
