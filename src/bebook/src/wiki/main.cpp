@@ -1,6 +1,8 @@
+#include "./reading_list.h"
 #include "./wiki_config.h"
 #include "./wiki_context.h"
 #include "./views/article_view.h"
+#include "./views/reading_list_view.h"
 
 #include "reader/color_theme_def.h"
 #include "reader/config.h"
@@ -49,12 +51,14 @@ void signal_handler(int signal)
 
 const char *STORE_KEY_LAST_PATH = "wiki_last_path";
 const char *STORE_KEY_LAST_ADDRESS = "wiki_last_address";
+const char *STORE_KEY_READ_PREFIX = "wiki_read_";
 
 std::unordered_map<std::string, std::string> load_config_with_defaults()
 {
     auto config = load_key_value(WIKI_CONFIG_FILE_PATH);
     config.try_emplace(WIKI_CONFIG_KEY_STORE_PATH, WIKI_STORE_PATH);
     config.try_emplace(WIKI_CONFIG_KEY_ZIM_PATH, WIKI_DEFAULT_ZIM_PATH);
+    config.try_emplace(WIKI_CONFIG_KEY_READING_LIST, WIKI_DEFAULT_READING_LIST);
     return config;
 }
 
@@ -179,37 +183,76 @@ int main(int argc, char **argv)
             }
         }
 
-        // The archive's landing page is a link portal built from tables, so the cleaner
-        // empties it. Only use it if something survives; otherwise say so rather than
-        // opening a blank page. The reading list will fill this gap.
-        if (start_path.empty())
+        // The reading list is the root view, so B out of an article lands somewhere useful.
+        // The archive's own landing page is deliberately not used: it is a link portal
+        // built from tables, which the cleaner correctly empties.
+        std::vector<ReadingListSection> sections;
+        load_reading_list(config[WIKI_CONFIG_KEY_READING_LIST], sections);
+
+        std::shared_ptr<ReadingListView> list_view;
+        if (!sections.empty())
         {
-            const std::string main_page = context->main_page_path();
-            if (!main_page.empty())
+            list_view = std::make_shared<ReadingListView>(
+                sections, sys_styling, view_stack,
+                [&](const std::string &path) {
+                    if (article_view == nullptr)
+                    {
+                        article_view = std::make_shared<ArticleView>(
+                            context, path, 0, sys_styling, token_view_styling, view_stack);
+                        article_view->set_on_change(
+                            [&state_store](const std::string &at_path, DocAddr at) {
+                                state_store.set_setting(STORE_KEY_LAST_PATH, at_path);
+                                state_store.set_setting(STORE_KEY_LAST_ADDRESS,
+                                                        std::to_string(at));
+                            });
+                    }
+                    else if (!article_view->navigate_to(path))
+                    {
+                        return;
+                    }
+
+                    if (view_stack.top_view() != article_view)
+                    {
+                        view_stack.push(article_view);
+                    }
+                });
+
+            for (const auto &section : sections)
             {
-                auto probe = context->open_article(main_page);
-                if (probe != nullptr && probe->has_content())
+                for (const auto &entry : section.entries)
                 {
-                    start_path = main_page;
+                    if (state_store.get_setting(STORE_KEY_READ_PREFIX + entry.path).has_value())
+                    {
+                        list_view->set_read(entry.path, true);
+                    }
                 }
             }
+
+            view_stack.push(list_view);
         }
 
+        // Resume straight into the last article, with the list still underneath it.
         if (!start_path.empty())
         {
             article_view = std::make_shared<ArticleView>(
                 context, start_path, start_address, sys_styling, token_view_styling, view_stack);
+
+            if (!article_view->current_path().empty())
+            {
+                article_view->set_on_change([&state_store](const std::string &path, DocAddr at) {
+                    state_store.set_setting(STORE_KEY_LAST_PATH, path);
+                    state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
+                    state_store.set_setting(STORE_KEY_READ_PREFIX + path, "1");
+                });
+                view_stack.push(article_view);
+            }
+            else
+            {
+                article_view = nullptr;
+            }
         }
 
-        if (article_view && !article_view->current_path().empty())
-        {
-            article_view->set_on_change([&state_store](const std::string &path, DocAddr at) {
-                state_store.set_setting(STORE_KEY_LAST_PATH, path);
-                state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
-            });
-            view_stack.push(article_view);
-        }
-        else
+        if (view_stack.is_done())
         {
             view_stack.push(std::make_shared<PopupView>(
                 "Nessuna voce da aprire", SYSTEM_FONT, sys_styling));

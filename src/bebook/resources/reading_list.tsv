@@ -1,0 +1,139 @@
+# Percorso di lettura: le potenze che formano il mondo di oggi, i grandi imperi
+# e gli eventi che li hanno plasmati.
+#
+# Formato: sezione <TAB> titolo mostrato <TAB> percorso nell'archivio ZIM.
+# Righe vuote e righe che iniziano con # sono ignorate.
+#
+# Validare dopo ogni modifica:
+#   ./build/linux/sandbox check_list <archivio.zim> resources/reading_list.tsv
+
+Roma e il Mediterraneo	Antica Roma	Civiltà_romana
+Roma e il Mediterraneo	Repubblica romana	Repubblica_romana
+Roma e il Mediterraneo	Impero romano	Impero_romano
+Roma e il Mediterraneo	Guerre puniche	Guerre_puniche
+Roma e il Mediterraneo	Cartagine	Cartagine
+Roma e il Mediterraneo	Gaio Giulio Cesare	Gaio_Giulio_Cesare
+Roma e il Mediterraneo	Augusto	Augusto
+Roma e il Mediterraneo	Pax romana	Pax_romana
+Roma e il Mediterraneo	Diocleziano	Diocleziano
+Roma e il Mediterraneo	Costantino I	Costantino_I
+Roma e il Mediterraneo	Caduta dell'Impero romano d'Occidente	Caduta_dell'Impero_romano_d'Occidente
+Roma e il Mediterraneo	Impero bizantino	Impero_bizantino
+
+Grecia e Persia	Antica Grecia	Antica_Grecia
+Grecia e Persia	Atene	Atene
+Grecia e Persia	Sparta	Sparta
+Grecia e Persia	Guerre persiane	Guerre_persiane
+Grecia e Persia	Guerra del Peloponneso	Guerra_del_Peloponneso
+Grecia e Persia	Impero achemenide	Impero_achemenide
+Grecia e Persia	Alessandro Magno	Alessandro_Magno
+Grecia e Persia	Ellenismo	Ellenismo
+
+Cina imperiale	Storia della Cina	Storia_della_Cina
+Cina imperiale	Qin Shi Huang	Qin_Shi_Huang
+Cina imperiale	Dinastia Han	Dinastia_Han
+Cina imperiale	Dinastia Tang	Dinastia_Tang
+Cina imperiale	Dinastia Song	Dinastia_Song
+Cina imperiale	Dinastia Ming	Dinastia_Ming
+Cina imperiale	Dinastia Qing	Dinastia_Qing
+Cina imperiale	Via della seta	Via_della_seta
+Cina imperiale	Guerre dell'oppio	Guerre_dell'oppio
+Cina imperiale	Mao Zedong	Mao_Zedong
+Cina imperiale	Rivoluzione culturale	Rivoluzione_culturale
+Cina imperiale	Repubblica Popolare Cinese	Cina
+
+India e Asia meridionale	Storia dell'India	Storia_dell'India
+India e Asia meridionale	Impero Maurya	Impero_Maurya
+India e Asia meridionale	Impero Gupta	Impero_Gupta
+India e Asia meridionale	Impero Moghul	Impero_Moghul
+India e Asia meridionale	Compagnia britannica delle Indie orientali	Compagnia_britannica_delle_Indie_orientali
+India e Asia meridionale	Raj britannico	Impero_anglo-indiano
+India e Asia meridionale	Mohandas Karamchand Gandhi	Mahatma_Gandhi
+India e Asia meridionale	Jawaharlal Nehru	Jawaharlal_Nehru
+India e Asia meridionale	Pakistan	Pakistan
+
+Mondo islamico	Islam	Islam
+Mondo islamico	Maometto	Maometto
+Mondo islamico	Califfato	Califfato
+Mondo islamico	Califfato omayyade	Califfato_omayyade
+Mondo islamico	Califfato abbaside	Califfato_abbaside
+Mondo islamico	Al-Andalus	Al-Andalus
+Mondo islamico	Impero ottomano	Impero_ottomano
+Mondo islamico	Caduta di Costantinopoli	Assedio_di_Costantinopoli_(1453)
+Mondo islamico	Solimano il Magnifico	Solimano_il_Magnifico
+Mondo islamico	Impero safavide	Safavidi
+
+Europa medievale	Medioevo	Medioevo
+Europa medievale	Carlo Magno	Carlo_Magno
+Europa medievale	Sacro Romano Impero	Sacro_Romano_Impero
+Europa medievale	Crociata	Crociata
+Europa medievale	Impero mongolo	Impero_mongolo
+Europa medievale	Gengis Khan	Gengis_Khan
+Europa medievale	Peste nera	Peste_nera
+Europa medievale	Guerra dei cent'anni	Guerra_dei_cent'anni
+
+Europa moderna	Rinascimento	Rinascimento
+Europa moderna	Riforma protestante	Riforma_protestante
+Europa moderna	Guerra dei trent'anni	Guerra_dei_trent'anni
+Europa moderna	Illuminismo	Illuminismo
+Europa moderna	Rivoluzione francese	Rivoluzione_francese
+Europa moderna	Napoleone Bonaparte	Napoleone_Bonaparte
+Europa moderna	Congresso di Vienna	Congresso_di_Vienna
+Europa moderna	Rivoluzione industriale	Rivoluzione_industriale
+Europa moderna	Risorgimento	Risorgimento
+
+Imperi coloniali	Colonialismo	Colonialismo
+Imperi coloniali	Impero spagnolo	Impero_spagnolo
+Imperi coloniali	Impero portoghese	Impero_portoghese
+Imperi coloniali	Compagnia olandese delle Indie orientali	Compagnia_olandese_delle_Indie_orientali
+Imperi coloniali	Impero britannico	Impero_britannico
+Imperi coloniali	Impero coloniale francese	Impero_coloniale_francese
+Imperi coloniali	Spartizione dell'Africa	Spartizione_dell'Africa
+Imperi coloniali	Tratta atlantica degli schiavi africani	Tratta_atlantica_degli_schiavi_africani
+
+Le Americhe	Civiltà maya	Maya
+Le Americhe	Impero azteco	Impero_azteco
+Le Americhe	Impero inca	Impero_inca
+Le Americhe	Cristoforo Colombo	Cristoforo_Colombo
+Le Americhe	Storia degli Stati Uniti d'America	Storia_degli_Stati_Uniti_d'America
+Le Americhe	Rivoluzione americana	Rivoluzione_americana
+Le Americhe	Guerra di secessione americana	Guerra_civile_americana
+Le Americhe	Brasile	Brasile
+
+Africa	Storia dell'Africa	Storia_dell'Africa
+Africa	Antico Egitto	Antico_Egitto
+Africa	Regno di Axum	Regno_di_Axum
+Africa	Impero del Mali	Impero_del_Mali
+Africa	Etiopia	Etiopia
+Africa	Apartheid	Apartheid
+Africa	Nelson Mandela	Nelson_Mandela
+
+Russia e URSS	Impero russo	Impero_russo
+Russia e URSS	Rivoluzione russa	Rivoluzione_russa
+Russia e URSS	Vladimir Lenin	Lenin
+Russia e URSS	Iosif Stalin	Iosif_Stalin
+Russia e URSS	Unione Sovietica	Unione_Sovietica
+Russia e URSS	Dissoluzione dell'Unione Sovietica	Dissoluzione_dell'Unione_Sovietica
+
+Giappone e Pacifico	Storia del Giappone	Storia_del_Giappone
+Giappone e Pacifico	Restaurazione Meiji	Rinnovamento_Meiji
+Giappone e Pacifico	Impero giapponese	Impero_giapponese
+
+Le due guerre	Prima guerra mondiale	Prima_guerra_mondiale
+Le due guerre	Trattato di Versailles	Trattato_di_Versailles
+Le due guerre	Fascismo	Fascismo
+Le due guerre	Benito Mussolini	Benito_Mussolini
+Le due guerre	Nazismo	Nazionalsocialismo
+Le due guerre	Adolf Hitler	Adolf_Hitler
+Le due guerre	Seconda guerra mondiale	Seconda_guerra_mondiale
+Le due guerre	Olocausto	Olocausto
+Le due guerre	Bombardamenti atomici di Hiroshima e Nagasaki	Bombardamenti_atomici_di_Hiroshima_e_Nagasaki
+
+Il mondo di oggi	Guerra fredda	Guerra_fredda
+Il mondo di oggi	Organizzazione delle Nazioni Unite	Organizzazione_delle_Nazioni_Unite
+Il mondo di oggi	Decolonizzazione	Decolonizzazione
+Il mondo di oggi	Guerra del Vietnam	Guerra_del_Vietnam
+Il mondo di oggi	Muro di Berlino	Muro_di_Berlino
+Il mondo di oggi	Unione europea	Unione_europea
+Il mondo di oggi	Globalizzazione	Globalizzazione
+Il mondo di oggi	Primavera araba	Primavera_araba
