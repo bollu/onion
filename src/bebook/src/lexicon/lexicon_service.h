@@ -51,6 +51,14 @@ struct Suggestion
     int distance;
 };
 
+// A search result for the dictionary app: the (accented) surface to show and open, and the
+// lemma it belongs to. `word` may be a conjugated form (e.g. "farò" for query "faro").
+struct SearchHit
+{
+    std::string word;
+    std::string lemma;
+};
+
 class LexiconService
 {
 public:
@@ -77,6 +85,11 @@ public:
     // edit distance (the "did you mean" fallback; also the seed of a dictionary search app).
     // Nearest first, deduped by lemma. Empty for very short queries or when nothing is close.
     std::vector<Suggestion> suggest(const std::string &surface, int max_results = 6) const;
+
+    // Dictionary-app search over the query (typed without accents): words folding exactly to
+    // it (incl. conjugated forms) first, then headword lemmas by prefix, then a fuzzy fallback
+    // if still thin. Accent-insensitive; deduped and bounded. For search-as-you-type.
+    std::vector<SearchHit> search(const std::string &query, int max_results = 40) const;
 
 private:
     struct Impl;

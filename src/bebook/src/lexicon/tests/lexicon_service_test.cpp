@@ -233,6 +233,49 @@ TEST(LexiconService, SuggestIsRankedAndBounded)
     EXPECT_TRUE(lex.suggest("zxqwkjvbn").empty());
 }
 
+bool has_word(const std::vector<SearchHit> &v, const std::string &word)
+{
+    return std::any_of(v.begin(), v.end(), [&](const SearchHit &h) { return h.word == word; });
+}
+
+TEST(LexiconService, SearchFindsExactFoldAndConjugatedForms)
+{
+    LexiconService lex = open();
+    // "faro" (no accent) finds the noun "faro" AND "farò" (fare, future) via the fold.
+    auto r = lex.search("faro");
+    ASSERT_FALSE(r.empty());
+    EXPECT_TRUE(has_word(r, "faro"));
+    EXPECT_TRUE(has_word(r, "far\xC3\xB2"));  // farò
+    // The conjugated hit carries its lemma.
+    for (const auto &h : r)
+    {
+        if (h.word == "far\xC3\xB2") EXPECT_EQ(h.lemma, "fare");
+    }
+}
+
+TEST(LexiconService, SearchPrefixBrowsesLemmas)
+{
+    LexiconService lex = open();
+    auto r = lex.search("camm");
+    ASSERT_FALSE(r.empty());
+    // Headword lemmas beginning "camm" (e.g. camminare).
+    EXPECT_TRUE(std::any_of(r.begin(), r.end(),
+                            [](const SearchHit &h) { return h.lemma == "camminare"; }));
+    EXPECT_LE(r.size(), 40u);
+}
+
+TEST(LexiconService, SearchIsDedupedAndSafe)
+{
+    LexiconService lex = open();
+    EXPECT_TRUE(lex.search("").empty());
+    // No exact/prefix hit -> fuzzy fallback still returns something sensible.
+    EXPECT_FALSE(lex.search("universit").empty());
+    // Deduped: no (word,lemma) pair appears twice.
+    auto r = lex.search("cane");
+    std::set<std::pair<std::string, std::string>> seen;
+    for (const auto &h : r) EXPECT_TRUE(seen.insert({h.word, h.lemma}).second);
+}
+
 TEST(DescribeMorphology, RendersGenderAndNumber)
 {
     EXPECT_EQ(describe_morphology("NOUN", "pl"), "sostantivo \xC2\xB7 plurale");

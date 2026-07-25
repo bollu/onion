@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cctype>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace lexicon
 {
@@ -365,6 +366,84 @@ std::vector<Suggestion> LexiconService::suggest(const std::string &surface, int 
         if (a.matched.size() != b.matched.size()) return a.matched.size() < b.matched.size();
         return a.lemma < b.lemma;
     });
+    if (static_cast<int>(out.size()) > max_results)
+    {
+        out.resize(static_cast<size_t>(max_results));
+    }
+    return out;
+}
+
+std::vector<SearchHit> LexiconService::search(const std::string &query, int max_results) const
+{
+    std::vector<SearchHit> out;
+    if (!impl->db)
+    {
+        return out;
+    }
+    const std::string q = fold_accents(query);
+    if (q.empty())
+    {
+        return out;
+    }
+
+    std::unordered_set<std::string> seen;
+    auto add = [&](std::string word, std::string lemma) {
+        std::string key = word + '\x01' + lemma;
+        if (seen.insert(key).second)
+        {
+            out.push_back(SearchHit{ std::move(word), std::move(lemma) });
+        }
+    };
+
+    // Tier 1: words folding exactly to the query, including conjugated forms (query "faro"
+    // finds both "faro" the noun and "farò" of fare). Shortest surface first.
+    {
+        static const char *sql =
+            "SELECT form, lemma FROM forms WHERE form_fold = ? ORDER BY length(form), form LIMIT 12";
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            sqlite3_bind_text(stmt, 1, q.c_str(), -1, SQLITE_TRANSIENT);
+            while (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                add(column_text(stmt, 0), column_text(stmt, 1));
+            }
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    // Tier 2: headword lemmas whose folded form starts with the query, via the form_fold index
+    // range-scan (natural alphabetical order), so incremental typing browses lemmas.
+    if (static_cast<int>(out.size()) < max_results)
+    {
+        std::string hi = q;
+        hi.back() = static_cast<char>(hi.back() + 1);  // exclusive prefix upper bound (ASCII fold)
+        static const char *sql =
+            "SELECT form, lemma FROM forms "
+            "WHERE form_fold >= ? AND form_fold < ? AND features IN ('inf','base') LIMIT ?";
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) == SQLITE_OK)
+        {
+            sqlite3_bind_text(stmt, 1, q.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, hi.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int(stmt, 3, max_results);
+            while (sqlite3_step(stmt) == SQLITE_ROW)
+            {
+                add(column_text(stmt, 0), column_text(stmt, 1));
+            }
+            sqlite3_finalize(stmt);
+        }
+    }
+
+    // Tier 3: still thin -> fuzzy "did you mean" over lemmas.
+    if (static_cast<int>(out.size()) < 5 && q.size() >= 3)
+    {
+        for (const auto &s : suggest(query, max_results))
+        {
+            add(s.lemma, s.lemma);
+        }
+    }
+
     if (static_cast<int>(out.size()) > max_results)
     {
         out.resize(static_cast<size_t>(max_results));
