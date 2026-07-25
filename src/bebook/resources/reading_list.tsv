@@ -300,3 +300,107 @@ Guerra fredda e dopo	Partito Comunista dell'Unione Sovietica	Partito_Comunista_d
 Guerra fredda e dopo	Guerra in Afghanistan (1979-1989)	Guerra_in_Afghanistan_(1979-1989)
 Guerra fredda e dopo	Guerra delle Falkland	Guerra_delle_Falkland
 Guerra fredda e dopo	Stati con armi nucleari	Stati_con_armi_nucleari
+
+# ---------------------------------------------------------------------------
+# Below: the non-work interests -- music theory and the Neapolitan partimento
+# tradition, art, Italian literature, philosophy.
+#
+# Note what the archive does NOT have: Partimento itself, Gradus ad Parnassum,
+# Johann Joseph Fux, Francesco Durante, L'arte della fuga. All exist on
+# it.wikipedia but fall outside its top-193k selection. wikipedia_it_all_mini
+# (3.1M articles, 2.4GB) has them; same code, one line in bewiki.cfg.
+# ---------------------------------------------------------------------------
+
+Musica: teoria e tradizione	Basso continuo	Basso_continuo
+Musica: teoria e tradizione	Contrappunto	Contrappunto
+Musica: teoria e tradizione	Fuga (musica)	Fuga_(musica)
+Musica: teoria e tradizione	Canone (musica)	Canone_(musica)
+Musica: teoria e tradizione	Solfeggio	Solfeggio
+Musica: teoria e tradizione	Armonia	Armonia
+Musica: teoria e tradizione	Accordo (musica)	Accordo_(musica)
+Musica: teoria e tradizione	Circolo delle quinte	Circolo_delle_quinte
+Musica: teoria e tradizione	Modo (musica)	Modo_(musica)
+Musica: teoria e tradizione	Temperamento equabile	Temperamento_equabile
+Musica: teoria e tradizione	Scala musicale	Scala_(musica)
+Musica: teoria e tradizione	Conservatorio	Conservatorio
+Musica: teoria e tradizione	Scuola musicale napoletana	Scuola_musicale_napoletana
+Musica: teoria e tradizione	Polifonia	Polifonia
+Musica: teoria e tradizione	Madrigale	Madrigale
+Musica: teoria e tradizione	Sonata	Sonata
+Musica: teoria e tradizione	Sinfonia	Sinfonia
+Musica: teoria e tradizione	Opera lirica	Opera
+
+Musica: compositori	Johann Sebastian Bach	Johann_Sebastian_Bach
+Musica: compositori	Domenico Scarlatti	Domenico_Scarlatti
+Musica: compositori	Alessandro Scarlatti	Alessandro_Scarlatti
+Musica: compositori	Nicola Porpora	Nicola_Porpora
+Musica: compositori	Claudio Monteverdi	Claudio_Monteverdi
+Musica: compositori	Antonio Vivaldi	Antonio_Vivaldi
+Musica: compositori	Girolamo Frescobaldi	Girolamo_Frescobaldi
+Musica: compositori	Wolfgang Amadeus Mozart	Wolfgang_Amadeus_Mozart
+Musica: compositori	Ludwig van Beethoven	Ludwig_van_Beethoven
+Musica: compositori	Frédéric Chopin	Fryderyk_Chopin
+Musica: compositori	Franz Liszt	Franz_Liszt
+Musica: compositori	Claude Debussy	Claude_Debussy
+Musica: compositori	Igor' Fëdorovič Stravinskij	Igor'_Fëdorovič_Stravinskij
+
+Musica: jazz e popolare	Jazz	Jazz
+Musica: jazz e popolare	Bebop	Bebop
+Musica: jazz e popolare	Ragtime	Ragtime
+Musica: jazz e popolare	Blues	Blues
+Musica: jazz e popolare	Duke Ellington	Duke_Ellington
+Musica: jazz e popolare	Bill Evans	Bill_Evans
+Musica: jazz e popolare	Thelonious Monk	Thelonious_Monk
+Musica: jazz e popolare	Charlie Parker	Charlie_Parker
+Musica: jazz e popolare	John Coltrane	John_Coltrane
+Musica: jazz e popolare	Miles Davis	Miles_Davis
+Musica: jazz e popolare	Art Tatum	Art_Tatum
+Musica: jazz e popolare	Scott Joplin	Scott_Joplin
+
+Arte	Art Nouveau	Art_Nouveau
+Arte	Leonardo da Vinci	Leonardo_da_Vinci
+Arte	Raffaello Sanzio	Raffaello_Sanzio
+Arte	Caravaggio	Caravaggio
+Arte	Sandro Botticelli	Sandro_Botticelli
+Arte	Giotto	Giotto
+Arte	Donatello	Donatello
+Arte	Impressionismo	Impressionismo
+Arte	Espressionismo	Espressionismo
+Arte	Cubismo	Cubismo
+Arte	Surrealismo	Surrealismo
+Arte	Futurismo	Futurismo
+Arte	Bauhaus	Bauhaus
+Arte	Prospettiva	Prospettiva
+Arte	Affresco	Affresco
+Arte	Sezione aurea	Sezione_aurea
+
+Letteratura	Dante Alighieri	Dante_Alighieri
+Letteratura	Divina Commedia	Divina_Commedia
+Letteratura	Giovanni Boccaccio	Giovanni_Boccaccio
+Letteratura	Decameron	Decameron
+Letteratura	Francesco Petrarca	Francesco_Petrarca
+Letteratura	Alessandro Manzoni	Alessandro_Manzoni
+Letteratura	I promessi sposi	I_promessi_sposi
+Letteratura	Ludovico Ariosto	Ludovico_Ariosto
+Letteratura	Orlando furioso	Orlando_furioso
+Letteratura	Torquato Tasso	Torquato_Tasso
+Letteratura	Giacomo Leopardi	Giacomo_Leopardi
+Letteratura	Italo Calvino	Italo_Calvino
+Letteratura	Primo Levi	Primo_Levi
+Letteratura	Umberto Eco	Umberto_Eco
+Letteratura	Luigi Pirandello	Luigi_Pirandello
+Letteratura	Cesare Pavese	Cesare_Pavese
+Letteratura	Elsa Morante	Elsa_Morante
+Letteratura	Italo Svevo	Italo_Svevo
+
+Filosofia	Ethica	Ethica
+Filosofia	Baruch Spinoza	Baruch_Spinoza
+Filosofia	Jean-Jacques Rousseau	Jean-Jacques_Rousseau
+Filosofia	Simone Weil	Simone_Weil
+Filosofia	Immanuel Kant	Immanuel_Kant
+Filosofia	Friedrich Nietzsche	Friedrich_Nietzsche
+Filosofia	Ludwig Wittgenstein	Ludwig_Wittgenstein
+Filosofia	Michel de Montaigne	Michel_de_Montaigne
+Filosofia	Stoicismo	Stoicismo
+Filosofia	Epicureismo	Epicureismo
+Filosofia	Scolastica (filosofia)	Scolastica_(filosofia)
