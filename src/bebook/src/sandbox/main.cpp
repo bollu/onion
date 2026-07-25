@@ -18,6 +18,7 @@ void bulk_load_test(std::string path);
 void dump_cover(const std::string &book_path, const std::string &out_path);
 void dump_meaning(const std::string &word, const std::string &out_path, int tab_index);
 void zim_dump(const std::string &path, const std::string &mode, const std::string &arg);
+void wiki_html_dump(const std::string &path);
 
 int main(int argc, char** argv)
 {
@@ -51,6 +52,10 @@ int main(int argc, char** argv)
         else if (mode == "zim" && argc > 2)
         {
             zim_dump(argv[2], argc > 3 ? argv[3] : "", argc > 4 ? argv[4] : "");
+        }
+        else if (mode == "wiki_html" && argc > 2)
+        {
+            wiki_html_dump(argv[2]);
         }
         else
         {

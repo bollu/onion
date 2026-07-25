@@ -27,8 +27,8 @@ std::string DocToken::common_to_string(std::string data) const
 
 ////////////////////////
 
-HeaderDocToken::HeaderDocToken(DocAddr address, const std::string &text, std::vector<text::StyleRun> style_runs)
-    : DocToken(TokenType::Header, address), text(text), style_runs(std::move(style_runs))
+HeaderDocToken::HeaderDocToken(DocAddr address, const std::string &text, std::vector<text::StyleRun> style_runs, std::vector<LinkRun> link_runs)
+    : DocToken(TokenType::Header, address), text(text), style_runs(std::move(style_runs)), link_runs(std::move(link_runs))
 {
 }
 
@@ -49,8 +49,8 @@ std::string HeaderDocToken::to_string() const
 
 ////////////////////////
 
-TextDocToken::TextDocToken(DocAddr address, const std::string &text, std::vector<text::StyleRun> style_runs)
-    : DocToken(TokenType::Text, address), text(text), style_runs(std::move(style_runs))
+TextDocToken::TextDocToken(DocAddr address, const std::string &text, std::vector<text::StyleRun> style_runs, std::vector<LinkRun> link_runs)
+    : DocToken(TokenType::Text, address), text(text), style_runs(std::move(style_runs)), link_runs(std::move(link_runs))
 {
 }
 
@@ -93,8 +93,8 @@ std::string ImageDocToken::to_string() const
 
 ////////////////////////
 
-ListItemDocToken::ListItemDocToken(DocAddr address, const std::string &text, int nest_level, std::vector<text::StyleRun> style_runs)
-    : DocToken(TokenType::ListItem, address), text(text), nest_level(nest_level), style_runs(std::move(style_runs))
+ListItemDocToken::ListItemDocToken(DocAddr address, const std::string &text, int nest_level, std::vector<text::StyleRun> style_runs, std::vector<LinkRun> link_runs)
+    : DocToken(TokenType::ListItem, address), text(text), nest_level(nest_level), style_runs(std::move(style_runs)), link_runs(std::move(link_runs))
 {
 }
 

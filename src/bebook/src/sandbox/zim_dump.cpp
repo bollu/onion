@@ -1,13 +1,20 @@
+#include "filetypes/zim/wiki_html_parser.h"
 #include "filetypes/zim/zim_file.h"
 #include "filetypes/zim/zim_source.h"
 #include "filetypes/zim/zim_types.h"
 
+#include "doc_api/doc_token.h"
+
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <string>
 
 namespace
 {
+
+void print_article(const zim::WikiArticle &article, size_t html_size);
 
 std::unique_ptr<zim::ZimFile> open_or_report(const std::string &path)
 {
@@ -133,7 +140,12 @@ void zim_dump(const std::string &path, const std::string &mode, const std::strin
         zim::ZimDirent d;
         if (!z->find_content(arg, index, d))
         {
-            std::cerr << "not found: " << arg << " (" << z->last_error() << ")" << std::endl;
+            std::cerr << "not found: " << arg;
+            if (!z->last_error().empty())
+            {
+                std::cerr << " (" << z->last_error() << ")";
+            }
+            std::cerr << std::endl;
             return;
         }
 
@@ -150,5 +162,122 @@ void zim_dump(const std::string &path, const std::string &mode, const std::strin
         return;
     }
 
-    std::cerr << "modes: header | list <n> | entry <index> | article <path>" << std::endl;
+    if (mode == "parse")
+    {
+        std::string html;
+        if (!z->read_content(arg, html))
+        {
+            std::cerr << "not found: " << arg << std::endl;
+            return;
+        }
+
+        zim::WikiArticle article;
+        if (!zim::parse_wiki_article(html.c_str(), arg, article))
+        {
+            std::cerr << "could not parse" << std::endl;
+            return;
+        }
+
+        print_article(article, html.size());
+        return;
+    }
+
+    std::cerr << "modes: header | list <n> | entry <index> | article <path> | parse <path>"
+              << std::endl;
+}
+
+// wiki_html <file.html>: parse a saved article, for checking the cleaner against flavours
+// the local .zim does not contain.
+void wiki_html_dump(const std::string &path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+    {
+        std::cerr << "cannot open " << path << std::endl;
+        return;
+    }
+
+    const std::string html((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+
+    zim::WikiArticle article;
+    if (!zim::parse_wiki_article(html.c_str(), path, article))
+    {
+        std::cerr << "could not parse" << std::endl;
+        return;
+    }
+
+    print_article(article, html.size());
+}
+
+namespace
+{
+
+void print_article(const zim::WikiArticle &article, size_t html_size)
+{
+    std::cout << "title:  " << article.title << "\n"
+              << "html:   " << html_size << " bytes\n"
+              << "tokens: " << article.tokens.size() << "\n"
+              << "width:  " << article.address_width << "\n"
+              << "toc:    " << article.toc.size() << " headings" << std::endl;
+
+    for (size_t i = 0; i < article.toc.size(); ++i)
+    {
+        std::cout << "  " << std::string(article.toc[i].indent_level * 2, ' ')
+                  << article.toc[i].display_name << std::endl;
+    }
+
+    std::cout << "\n--- tokens ---" << std::endl;
+    size_t total_links = 0;
+    {
+        for (const auto &token : article.tokens)
+        {
+            const std::string *text = nullptr;
+            const std::vector<LinkRun> *links = nullptr;
+            const char *kind = "?";
+
+            if (token->type == TokenType::Text)
+            {
+                const auto *t = static_cast<const TextDocToken *>(token.get());
+                text = &t->text;
+                links = &t->link_runs;
+                kind = "TEXT";
+            }
+            else if (token->type == TokenType::Header)
+            {
+                const auto *t = static_cast<const HeaderDocToken *>(token.get());
+                text = &t->text;
+                links = &t->link_runs;
+                kind = "HEAD";
+            }
+            else if (token->type == TokenType::ListItem)
+            {
+                const auto *t = static_cast<const ListItemDocToken *>(token.get());
+                text = &t->text;
+                links = &t->link_runs;
+                kind = "LIST";
+            }
+
+            if (text == nullptr)
+            {
+                continue;
+            }
+            if (text->empty())
+            {
+                std::cout << "[break]" << std::endl;
+                continue;
+            }
+
+            std::cout << kind << " " << *text << std::endl;
+            for (const auto &link : *links)
+            {
+                ++total_links;
+                std::cout << "     link [" << link.offset << "," << link.length << "] \""
+                          << text->substr(link.offset, link.length) << "\" -> " << link.target
+                          << std::endl;
+            }
+        }
+    }
+    std::cout << "\ntotal links: " << total_links << std::endl;
+}
+
 }
