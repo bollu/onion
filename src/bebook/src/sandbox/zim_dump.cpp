@@ -129,8 +129,20 @@ void zim_dump(const std::string &path, const std::string &mode, const std::strin
             return;
         }
         std::cout << "ns      " << d.ns << "\npath    " << d.path << "\ntitle   "
-                  << d.display_title() << "\nmime    " << z->mime_type(d.mime)
-                  << "\ncluster " << d.cluster << "\nblob    " << d.blob << std::endl;
+                  << d.display_title() << std::endl;
+        if (d.is_redirect())
+        {
+            std::cout << "kind    redirect -> " << d.redirect_index << std::endl;
+        }
+        else if (d.is_deleted())
+        {
+            std::cout << "kind    deleted" << std::endl;
+        }
+        else
+        {
+            std::cout << "kind    article\nmime    " << z->mime_type(d.mime)
+                      << "\ncluster " << d.cluster << "\nblob    " << d.blob << std::endl;
+        }
         return;
     }
 
