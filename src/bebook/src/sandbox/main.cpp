@@ -17,6 +17,7 @@ void display_xhtml(std::string path);
 void bulk_load_test(std::string path);
 void dump_cover(const std::string &book_path, const std::string &out_path);
 void dump_meaning(const std::string &word, const std::string &out_path, int tab_index);
+void zim_dump(const std::string &path, const std::string &mode, const std::string &arg);
 
 int main(int argc, char** argv)
 {
@@ -46,6 +47,10 @@ int main(int argc, char** argv)
         else if (mode == "meaning" && argc > 3)
         {
             dump_meaning(argv[2], argv[3], argc > 4 ? atoi(argv[4]) : 0);
+        }
+        else if (mode == "zim" && argc > 2)
+        {
+            zim_dump(argv[2], argc > 3 ? argv[3] : "", argc > 4 ? argv[4] : "");
         }
         else
         {
