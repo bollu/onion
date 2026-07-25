@@ -361,15 +361,22 @@ bewiki:
 
 # Card is in this Mac's reader. Fast, and works on any Miyoo including the base Mini.
 # Auto-detects the volume; SD=/Volumes/NAME overrides, DRY_RUN=1 to preview.
-deploy-card: sideload-bewiki
+deploy-card:
 	@$(ECHO) $(PRINT_RECIPE)
+# Staging cross-compiles and so must run inside the toolchain; the copy must run outside
+# it, because the container cannot see /Volumes. Hence the two steps rather than a plain
+# prerequisite -- `make deploy-card` on the host would otherwise fail on an unset PREFIX.
+	@$(MAKE) with-toolchain CMD="sideload-bewiki sideload-systems"
 	@$(ROOT_DIR)/tools/deploy_card.sh
 	@$(ECHO) $(PRINT_DONE)
 
 # Device is serving its own hotspot. Miyoo Mini Plus only -- the base Mini has no Wi-Fi.
 # Needs SSH on in Tweaks > Network. DEVICE_HOST/DEVICE_USER override.
-deploy-wifi: sideload-bewiki
+deploy-wifi:
 	@$(ECHO) $(PRINT_RECIPE)
+# As deploy-card: build in the container, transfer from the host, which is where the
+# hotspot connection lives.
+	@$(MAKE) with-toolchain CMD="sideload-bewiki sideload-systems"
 	@$(ROOT_DIR)/tools/deploy_wifi.sh
 	@$(ECHO) $(PRINT_DONE)
 

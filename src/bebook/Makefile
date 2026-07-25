@@ -45,6 +45,11 @@ endif
 
 CXX      := $(CROSS_COMPILE)c++
 
+# gcc, not cc: the cross toolchain ships arm-linux-gnueabihf-gcc but no -cc, so
+# $(CROSS_COMPILE)cc resolves only on the host and fails the device build. Used for the
+# vendored C amalgamations (SQLite, zstd).
+CC       := $(CROSS_COMPILE)gcc
+
 # Per-platform, and overridable, because builds must not share object files -- or, worse,
 # the .d dependency files GCC writes, which record absolute include paths. Mixing them
 # fails with "No rule to make target '/opt/miyoomini-toolchain/.../ft2build.h'", which
@@ -208,7 +213,7 @@ $(SQLITE_OBJECT): $(SQLITE_DIR)/sqlite3.c
 		exit 1; \
 	fi
 	@mkdir -p $(@D)
-	$(CROSS_COMPILE)cc $(CPPFLAGS) -O2 $(SQLITE_DEFINES) -I$(SQLITE_DIR) -c $< -o $@
+	$(CC) $(CPPFLAGS) -O2 $(SQLITE_DEFINES) -I$(SQLITE_DIR) -c $< -o $@
 
 # zstd decoder amalgamation: C, so cc rather than the C++ driver; no WARNFLAGS, no -MMD.
 $(ZSTD_OBJECT): $(ZSTD_DIR)/zstddeclib.c
@@ -217,7 +222,7 @@ $(ZSTD_OBJECT): $(ZSTD_DIR)/zstddeclib.c
 		exit 1; \
 	fi
 	@mkdir -p $(@D)
-	$(CROSS_COMPILE)cc $(CPPFLAGS) -O2 -I$(ZSTD_DIR) -c $< -o $@
+	$(CC) $(CPPFLAGS) -O2 -I$(ZSTD_DIR) -c $< -o $@
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(@D)
