@@ -42,6 +42,15 @@ struct ConjTable
 // Person labels for rendering a ConjTable, indexed 0..5.
 extern const std::array<const char *, 6> PERSON_LABELS;
 
+// A fuzzy-match candidate for a word not found exactly: the closest known lemma, the folded
+// form that matched, and the edit distance from the (folded) query. Nearest first.
+struct Suggestion
+{
+    std::string lemma;
+    std::string matched;
+    int distance;
+};
+
 class LexiconService
 {
 public:
@@ -63,6 +72,11 @@ public:
 
     // Full conjugation tables for a verb lemma, in display order. Empty for non-verbs.
     std::vector<ConjTable> conjugations(const std::string &lemma) const;
+
+    // Closest known words to a misspelled/unknown surface, by trigram overlap reranked by
+    // edit distance (the "did you mean" fallback; also the seed of a dictionary search app).
+    // Nearest first, deduped by lemma. Empty for very short queries or when nothing is close.
+    std::vector<Suggestion> suggest(const std::string &surface, int max_results = 6) const;
 
 private:
     struct Impl;

@@ -203,6 +203,36 @@ TEST(LexiconService, EmptyAndUnknownInputAreSafe)
     EXPECT_TRUE(lex.lookup_it_it("qualunque").empty());  // It->It is unpopulated; must not crash
 }
 
+bool has_suggestion(const std::vector<Suggestion> &v, const std::string &lemma)
+{
+    return std::any_of(v.begin(), v.end(), [&](const Suggestion &s) { return s.lemma == lemma; });
+}
+
+TEST(LexiconService, SuggestHandlesWrongFirstLetter)
+{
+    LexiconService lex = open();
+    // The case this exists for: a wrong FIRST letter must not silently fail.
+    EXPECT_TRUE(has_suggestion(lex.suggest("bniversita"), "universit\xC3\xA0"));  // -> università
+    // Wrong last letter, and a dropped letter, also resolve.
+    EXPECT_TRUE(has_suggestion(lex.suggest("universitq"), "universit\xC3\xA0"));
+    EXPECT_TRUE(has_suggestion(lex.suggest("camminvo"), "camminare"));
+}
+
+TEST(LexiconService, SuggestIsRankedAndBounded)
+{
+    LexiconService lex = open();
+    auto s = lex.suggest("universia", 4);
+    ASSERT_FALSE(s.empty());
+    EXPECT_LE(s.size(), 4u);
+    for (size_t i = 1; i < s.size(); ++i)
+    {
+        EXPECT_LE(s[i - 1].distance, s[i].distance);  // nearest first
+    }
+    // Too-short queries and total nonsense return nothing.
+    EXPECT_TRUE(lex.suggest("ab").empty());
+    EXPECT_TRUE(lex.suggest("zxqwkjvbn").empty());
+}
+
 TEST(DescribeMorphology, RendersGenderAndNumber)
 {
     EXPECT_EQ(describe_morphology("NOUN", "pl"), "sostantivo \xC2\xB7 plurale");

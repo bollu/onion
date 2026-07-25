@@ -1,5 +1,7 @@
 #include "./lexicon_service.h"
 
+#include "util/edit_distance.h"
+
 #include <sqlite3.h>
 
 #include <algorithm>
@@ -283,6 +285,89 @@ std::vector<ConjTable> LexiconService::conjugations(const std::string &lemma) co
         {
             out.push_back(std::move(table));
         }
+    }
+    return out;
+}
+
+std::vector<Suggestion> LexiconService::suggest(const std::string &surface, int max_results) const
+{
+    std::vector<Suggestion> out;
+    if (!impl->db)
+    {
+        return out;
+    }
+
+    const std::string q = fold_accents(surface);
+    if (q.size() < 3)  // the trigram tokenizer needs at least three characters
+    {
+        return out;
+    }
+
+    // OR of the query's overlapping trigrams: FTS5 returns words sharing any of them, ranked
+    // by how many they share, so a wrong first (or last) letter still finds the word. Each
+    // trigram is quoted so the tokenizer treats it as one token; skip any with a quote byte.
+    std::string match;
+    for (size_t i = 0; i + 3 <= q.size(); ++i)
+    {
+        const std::string g = q.substr(i, 3);
+        if (g.find('"') != std::string::npos)
+        {
+            continue;
+        }
+        if (!match.empty())
+        {
+            match += " OR ";
+        }
+        match += '"';
+        match += g;
+        match += '"';
+    }
+    if (match.empty())
+    {
+        return out;
+    }
+
+    static const char *sql =
+        "SELECT fold, lemma FROM vocab WHERE vocab MATCH ? ORDER BY rank LIMIT 60";
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        return out;  // no `vocab` table (old DB / FTS5 not built): degrade to no suggestions
+    }
+    sqlite3_bind_text(stmt, 1, match.c_str(), -1, SQLITE_TRANSIENT);
+
+    // Rerank the trigram candidates by actual edit distance and keep the nearest per lemma.
+    const int max_dist = 3;
+    std::unordered_map<std::string, Suggestion> best;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        std::string fold = column_text(stmt, 0);
+        std::string lemma = column_text(stmt, 1);
+        const int d = edit_distance(q, fold, max_dist);
+        if (d > max_dist)
+        {
+            continue;
+        }
+        auto it = best.find(lemma);
+        if (it == best.end() || d < it->second.distance)
+        {
+            best[lemma] = Suggestion{lemma, std::move(fold), d};
+        }
+    }
+    sqlite3_finalize(stmt);
+
+    for (auto &kv : best)
+    {
+        out.push_back(kv.second);
+    }
+    std::sort(out.begin(), out.end(), [](const Suggestion &a, const Suggestion &b) {
+        if (a.distance != b.distance) return a.distance < b.distance;
+        if (a.matched.size() != b.matched.size()) return a.matched.size() < b.matched.size();
+        return a.lemma < b.lemma;
+    });
+    if (static_cast<int>(out.size()) > max_results)
+    {
+        out.resize(static_cast<size_t>(max_results));
     }
     return out;
 }
