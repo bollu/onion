@@ -43,6 +43,13 @@ public:
     // Binary search over the path pointer list, which is sorted by (namespace, path).
     bool find_by_path(char ns, const std::string &path, uint32_t &out_index) const;
 
+    // The first entry not ordered before (ns, path) -- the same binary search without the
+    // exact-match check. Prefix search walks forward from here, which is what makes an
+    // article search cheap: no index to build over 194k entries, just log n and a walk.
+    bool lower_bound_path(char ns, const std::string &path, uint32_t &out_index) const;
+
+    uint32_t entry_count() const;
+
     // Walks redirect entries to the article they name. False on a cycle or a broken link.
     bool resolve(uint32_t entry_index, uint32_t &out_index, int max_hops = 8) const;
 

@@ -299,7 +299,12 @@ bool ZimFile::dirent(uint32_t entry_index, ZimDirent &out) const
     return true;
 }
 
-bool ZimFile::find_by_path(char ns, const std::string &path, uint32_t &out_index) const
+uint32_t ZimFile::entry_count() const
+{
+    return static_cast<uint32_t>(path_ptrs.size());
+}
+
+bool ZimFile::lower_bound_path(char ns, const std::string &path, uint32_t &out_index) const
 {
     uint32_t lo = 0;
     uint32_t hi = static_cast<uint32_t>(path_ptrs.size());
@@ -338,6 +343,18 @@ bool ZimFile::find_by_path(char ns, const std::string &path, uint32_t &out_index
     }
 
     if (lo >= path_ptrs.size())
+    {
+        return false;
+    }
+
+    out_index = lo;
+    return true;
+}
+
+bool ZimFile::find_by_path(char ns, const std::string &path, uint32_t &out_index) const
+{
+    uint32_t lo = 0;
+    if (!lower_bound_path(ns, path, lo))
     {
         return false;
     }

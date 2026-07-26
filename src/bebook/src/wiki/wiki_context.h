@@ -22,6 +22,10 @@ public:
     // Null if the article is missing or unparseable.
     std::shared_ptr<zim::ZimArticleReader> open_article(const std::string &path);
 
+    // The open archive, for the title search. Null before open() succeeds. Borrowed, not
+    // owned: the search reads dirents and holds nothing.
+    zim::ZimFile *zim_file() const;
+
 private:
     std::shared_ptr<zim::ZimFile> zim;
     std::shared_ptr<zim::ArticleCache> cache;

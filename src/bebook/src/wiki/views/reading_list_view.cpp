@@ -35,6 +35,7 @@ struct ReadingListViewState
     std::map<uint32_t, uint32_t> entry_cursor;
 
     bool is_done = false;
+    std::function<void()> on_search;
 
     ReadingListViewState(std::vector<ReadingListSection> sections,
                          SystemStyling &styling,
@@ -176,6 +177,12 @@ void ReadingListView::on_keypress(SDLKey key)
         return;
     }
 
+    if (key == SW_BTN_Y && state->on_search)
+    {
+        state->on_search();
+        return;
+    }
+
     // B does nothing here. This is the root view, so B has nothing to back out of, and
     // making it quit meant one press too many on the way out of an article dropped the
     // reader out of the app entirely. START leaves.
@@ -231,4 +238,9 @@ void ReadingListView::refresh_section_menu()
 
     state->section_menu->set_entries(names);
     state->section_menu->set_cursor_pos(cursor);
+}
+
+void ReadingListView::set_on_search(std::function<void()> callback)
+{
+    state->on_search = std::move(callback);
 }

@@ -1,6 +1,7 @@
 #include "./article_view.h"
 
 #include "wiki/breadcrumb.h"
+#include "wiki/views/article_search_view.h"
 #include "wiki/nav_history.h"
 #include "wiki/nav_state.h"
 #include "wiki/wiki_context.h"
@@ -423,6 +424,20 @@ void ArticleView::on_keypress(SDLKey key)
                 state->step(nav::Event::BackExhausted);
             }
             break;
+        case SW_BTN_Y:
+        {
+            // Find another article by name. Y is free here -- A is the meaning, X follows a
+            // link -- and this is the one way to reach an article that nothing links to.
+            auto search = std::make_shared<ArticleSearchView>(
+                *state->context, state->sys_styling);
+            search->set_on_open([this](const std::string &path) {
+                // Queued, not immediate: this runs inside the search view's own key
+                // handler, and navigating replaces the TokenView underneath it.
+                queue_navigation(path, 0, nav::Event::LinkFollowed);
+            });
+            state->view_stack.push(search);
+            break;
+        }
         // START (return to the main menu) is handled at the top level in main.cpp. Back
         // to the reading list is B (go_back), which unwinds history then exits.
         case SW_BTN_SELECT:

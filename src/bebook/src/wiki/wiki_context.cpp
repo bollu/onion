@@ -54,3 +54,8 @@ std::shared_ptr<zim::ZimArticleReader> WikiContext::open_article(const std::stri
     }
     return reader;
 }
+
+zim::ZimFile *WikiContext::zim_file() const
+{
+    return zim.get();
+}

@@ -3,6 +3,7 @@
 #include "./wiki_config.h"
 #include "./wiki_context.h"
 #include "./views/article_view.h"
+#include "./views/article_search_view.h"
 #include "./views/reading_list_view.h"
 
 #include "reader/color_theme_def.h"
@@ -240,6 +241,7 @@ int main(int argc, char **argv)
     // Declared up here because record_change reports read marks to it, and it is built
     // further down once the archive is known to have opened.
     std::shared_ptr<ReadingListView> list_view;
+    std::function<void(const std::string &)> open_from_list;
 
     std::set<std::string> read_paths = load_read_paths(state_store);
     // Bounds what is recorded: only what the list actually offers.
@@ -332,9 +334,8 @@ int main(int argc, char **argv)
 
         if (!sections.empty())
         {
-            list_view = std::make_shared<ReadingListView>(
-                sections, sys_styling, view_stack,
-                [&](const std::string &path) {
+            // One opener, used by the list and by the search results.
+            open_from_list = [&](const std::string &path) {
                     bool opened = false;
                     if (article_view == nullptr)
                     {
@@ -364,7 +365,21 @@ int main(int argc, char **argv)
                     {
                         view_stack.push(article_view);
                     }
+                };
+
+            list_view = std::make_shared<ReadingListView>(
+                sections, sys_styling, view_stack, open_from_list);
+
+            // Y searches the archive by title. The list itself has no WikiContext, and the
+            // opening path is the same one the list uses, so it is wired here rather than
+            // duplicated inside the view.
+            list_view->set_on_search([&]() {
+                auto search = std::make_shared<ArticleSearchView>(*context, sys_styling);
+                search->set_on_open([&](const std::string &path) {
+                    open_from_list(path);
                 });
+                view_stack.push(search);
+            });
 
             for (const auto &section : sections)
             {

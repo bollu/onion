@@ -36,6 +36,10 @@ public:
     // caller owns the store.
     void set_read(const std::string &path, bool read);
 
+    // Y opens the article search. The list has no WikiContext of its own, so main() -- which
+    // does -- supplies the action rather than the view reaching for a global.
+    void set_on_search(std::function<void()> callback);
+
 private:
     std::unique_ptr<ReadingListViewState> state;
 
