@@ -1,5 +1,5 @@
 // Renders the dictionary app's SearchView to a PNG so its keyboard/results layout can be
-// judged by eye. Run:  ./build/<platform>/sandbox dict <query> out.png
+// judged by eye. Run:  ./build/<platform>/sandbox dict <query> out.png [theme]
 
 #include "dict/views/search_view.h"
 
@@ -17,7 +17,7 @@
 #include <iostream>
 #include <string>
 
-void dump_search(const std::string &query, const std::string &out_path)
+void dump_search(const std::string &query, const std::string &out_path, const std::string &theme)
 {
     SDL_Surface *surface = SDL_CreateRGBSurface(
         SDL_SWSURFACE, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
@@ -25,6 +25,10 @@ void dump_search(const std::string &query, const std::string &out_path)
 
     SystemStyling styling(DEFAULT_FONT_NAME, DEFAULT_FONT_SIZE, DEFAULT_COLOR_THEME, DEFAULT_SHOULDER_KEYMAP);
     lexicon::LexiconService lex(LEXICON_DB_PATH);
+    if (!theme.empty())
+    {
+        styling.set_color_theme(theme);
+    }
     ViewStack view_stack;
 
     SearchView view(lex, styling, view_stack);

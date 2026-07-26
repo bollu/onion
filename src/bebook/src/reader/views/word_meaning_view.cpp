@@ -457,24 +457,38 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     }
     pron_col += PAD_X;
 
-    // Where the plural column starts. Measured from the widest singular form actually on
-    // screen rather than fixed, because compound tenses ("siamo andati") are far wider
-    // than simple ones and would otherwise collide. Clamped so the plural column always
-    // has room even if a form is enormous.
+    // Where the plural column starts, measured from the widest singular form actually on
+    // screen rather than fixed, because compound tenses ("siamo andati/andate") are far
+    // wider than simple ones.
+    //
+    // Two columns are only used when both actually fit. Clamping the column instead is what
+    // the earlier version did, and it silently ran the singular form into the plural pronoun
+    // and clipped the plural form mid-word at the right edge -- passato prossimo never fit
+    // and never said so. When they do not fit, the table falls back to one column of six
+    // rows, which is one line past the body and so scrolls. This view is the full-detail
+    // one, so it costs a keypress rather than eliding away a form the reader came here for.
     int plural_col = 0;
+    bool two_columns = true;
     {
         const std::vector<BodyItem> measure_items = body_items();
-        int widest = 0;
+        int widest_sing = 0;
+        int widest_plur = 0;
         for (const auto &it : measure_items)
         {
-            if (it.kind == BodyItem::Kind::Conjugation)
+            if (it.kind != BodyItem::Kind::Conjugation)
             {
-                int w = 0;
-                text::text_size(font, it.b.c_str(), &w, nullptr);
-                widest = std::max(widest, w);
+                continue;
             }
+            int w = 0;
+            text::text_size(font, it.b.c_str(), &w, nullptr);
+            widest_sing = std::max(widest_sing, w);
+            text::text_size(font, it.d.c_str(), &w, nullptr);
+            widest_plur = std::max(widest_plur, w);
         }
-        plural_col = std::min(pron_col + widest + PAD_X, cw / 2 + pron_col / 2);
+        // A wider gutter than PAD_X between the columns: at PAD_X the singular form and the
+        // plural pronoun read as one run of text.
+        plural_col = pron_col + widest_sing + PAD_X * 2;
+        two_columns = plural_col + pron_col + widest_plur <= body_w;
     }
 
     // Flatten body items into physical lines: prose paragraphs wrap; conjugation and blank
@@ -486,18 +500,45 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     std::vector<std::vector<text::Line>> layouts;
     paras.reserve(items.size());
     layouts.reserve(items.size());
-    struct Phys { int type; int para; int line; int item; };  // type: 0 prose,1 conj,2 blank
+    // `half` is 0 for a paired row or the singular of a split one, 1 for the plural of a
+    // split one; it is meaningless for the other types.
+    struct Phys { int type; int para; int line; int item; int half; };  // type: 0 prose,1 conj,2 blank
     std::vector<Phys> phys;
     for (int i = 0; i < static_cast<int>(items.size()); ++i)
     {
         const BodyItem &it = items[i];
         if (it.kind == BodyItem::Kind::Conjugation)
         {
-            phys.push_back({ 1, -1, -1, i });
+            if (two_columns)
+            {
+                phys.push_back({ 1, -1, -1, i, 0 });
+                continue;
+            }
+            // One column: take the whole run of rows in one go and emit every singular
+            // before any plural, so it reads io/tu/lui, noi/voi/loro. Splitting each row
+            // where it stands would interleave them as io/noi/tu/voi.
+            int j = i;
+            while (j < static_cast<int>(items.size())
+                   && items[j].kind == BodyItem::Kind::Conjugation)
+            {
+                ++j;
+            }
+            for (int k = i; k < j; ++k)
+            {
+                phys.push_back({ 1, -1, -1, k, 0 });
+            }
+            for (int k = i; k < j; ++k)
+            {
+                if (!items[k].c.empty())
+                {
+                    phys.push_back({ 1, -1, -1, k, 1 });
+                }
+            }
+            i = j - 1;
         }
         else if (it.kind == BodyItem::Kind::Blank || it.a.empty())
         {
-            phys.push_back({ 2, -1, -1, i });
+            phys.push_back({ 2, -1, -1, i, 0 });
         }
         else
         {
@@ -507,7 +548,7 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
             layouts.push_back(text::layout_paragraph(st, font, body_w, text::Align::Left, true));
             for (int k = 0; k < static_cast<int>(layouts.back().size()); ++k)
             {
-                phys.push_back({ 0, pidx, k, i });
+                phys.push_back({ 0, pidx, k, i, 0 });
             }
         }
     }
@@ -535,9 +576,11 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         if (p.type == 1)
         {
             const BodyItem &it = items[p.item];
-            blit_line(dest, font, it.a, cx0, ry, theme.secondary_text, theme.background);
-            blit_line(dest, font, it.b, cx0 + pron_col, ry, theme.main_text, theme.background);
-            if (!it.c.empty())
+            const std::string &pronoun = p.half == 0 ? it.a : it.c;
+            const std::string &form    = p.half == 0 ? it.b : it.d;
+            blit_line(dest, font, pronoun, cx0, ry, theme.secondary_text, theme.background);
+            blit_line(dest, font, form, cx0 + pron_col, ry, theme.main_text, theme.background);
+            if (two_columns && !it.c.empty())
             {
                 blit_line(dest, font, it.c, cx0 + plural_col, ry,
                           theme.secondary_text, theme.background);

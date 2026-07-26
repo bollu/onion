@@ -11,10 +11,14 @@
 struct SystemStyling;
 struct ViewStack;
 
-// The dictionary app's root: an on-screen ASCII keyboard, a search bar, and a live results
-// list. Typing (accent-insensitively) searches as you go; a result opens the shared
-// WordMeaningView. D-pad up from the keyboard's top row moves into the results; A there opens
-// the selected word; B leaves the results (or exits the app from the keyboard).
+// The dictionary app's only screen: a search bar, a strip of the top few matches, an inline
+// detail panel for the active one, and an on-screen ASCII keyboard.
+//
+// There is no focus to move. The keyboard always has the d-pad and A; L1/R1 cycle the match
+// strip and the panel below follows. The previous design split focus between the keyboard
+// and a results list, reachable only by pressing UP from the keyboard's top row and with no
+// indicator of which pane was live -- so the list showed no cursor while typing even though
+// one was selected.
 class SearchView : public View
 {
 public:
@@ -34,12 +38,23 @@ public:
     void set_query(const std::string &q);
 
 private:
-    enum class Focus { Keyboard, Results };
+    // Everything the panel draws for one match, resolved once when the match changes so
+    // rendering is a pure read.
+    struct Detail
+    {
+        std::string headline;                  // "io faccio → fare · presente"
+        std::vector<std::string> senses;       // glosses, already numbered
+        const lexicon::ConjTable *conj = nullptr;  // into `conj_tables`; null for non-verbs
+        int person = -1;                       // highlighted person, or -1
+        bool more = false;                     // is the full modal worth opening?
+    };
 
     void type_char(char c);
     void backspace();
     void activate_key();
     void refresh_results();
+    void rebuild_detail();
+    void cycle_match(int dir);
     void open_selected();
     void move_key(int dr, int dc);
 
@@ -51,9 +66,11 @@ private:
     std::string query;
     std::vector<lexicon::SearchHit> results;
     int result_index = 0;
-    int result_scroll = 0;
 
-    Focus focus = Focus::Keyboard;
+    // Kept alive because Detail::conj points into it.
+    std::vector<lexicon::ConjTable> conj_tables;
+    Detail detail;
+
     int kb_row = 0;
     int kb_col = 0;
 

@@ -71,6 +71,11 @@ Fixed text_width(const Font *font, const char *utf8, uint32_t length);
 int font_line_height(const Font *font);
 int font_ascent(const Font *font);
 
+// Truncate `s` to fit `max_px`, appending an ellipsis when it does not. UTF-8 aware: whole
+// code points are dropped from the end so a multibyte glyph is never split. For single-line
+// cells that have a hard width and no room to wrap.
+std::string elide_to_width(const Font *font, const std::string &s, int max_px);
+
 // Renders onto an opaque `bg`, like TTF_RenderUTF8_Shaded. Returns nullptr for empty
 // text, matching how the existing views guard their blits.
 surface_unique_ptr render_text_shaded(

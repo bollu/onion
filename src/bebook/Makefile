@@ -123,10 +123,12 @@ COMMON_SRC   := $(filter-out src/reader/main.cpp, $(wildcard src/filetypes/*.cpp
 READER_SRC   := $(COMMON_SRC) src/reader/main.cpp
 # bewiki: the ZIM reader plus its own views. Its own main is filtered out for TEST_SRC.
 ZIM_SRC      := $(wildcard src/filetypes/zim/*.cpp)
+# The dict app minus its main, so the same objects serve the app, the sandbox and tests.
+DICT_LIB_SRC    := $(filter-out src/dict/main.cpp, $(wildcard src/dict/*.cpp src/dict/views/*.cpp))
 WIKI_LIB_SRC := $(filter-out src/wiki/main.cpp, $(wildcard src/wiki/*.cpp src/wiki/views/*.cpp))
 WIKI_SRC     := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) src/wiki/main.cpp
 # text_specimen.cpp has its own main() and is built as a separate target.
-SANDBOX_SRC  := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(wildcard src/dict/views/*.cpp) $(filter-out src/sandbox/text_specimen.cpp, $(wildcard src/sandbox/*.cpp))
+SANDBOX_SRC  := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(DICT_LIB_SRC) $(filter-out src/sandbox/text_specimen.cpp, $(wildcard src/sandbox/*.cpp))
 
 # Standalone type-specimen renderer. Depends only on the text engine, SDL and FreeType,
 # deliberately: typography can then be iterated on without a working epub/zip/xml stack.
@@ -134,7 +136,7 @@ SANDBOX_SRC  := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(wildcard src/dict/vie
 # uses; without it the link fails on SDL_Deleter::operator().
 SPECIMEN_SRC     := src/sandbox/text_specimen.cpp $(wildcard src/text/*.cpp) src/util/sdl_pointer.cpp
 SPECIMEN_OBJECTS := $(SPECIMEN_SRC:%.cpp=$(OBJ_DIR)/%.o) $(HB_OBJECT)
-TEST_SRC     := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(wildcard src/sys/tests/*.cpp src/reader/tests/*.cpp src/filetypes/epub/tests/*.cpp src/filetypes/zim/tests/*.cpp src/util/tests/*.cpp src/doc_api/tests/*.cpp src/text/tests/*.cpp src/lexicon/tests/*.cpp src/wiki/tests/*.cpp)
+TEST_SRC     := $(COMMON_SRC) $(ZIM_SRC) $(WIKI_LIB_SRC) $(DICT_LIB_SRC) $(wildcard src/sys/tests/*.cpp src/reader/tests/*.cpp src/filetypes/epub/tests/*.cpp src/filetypes/zim/tests/*.cpp src/util/tests/*.cpp src/doc_api/tests/*.cpp src/text/tests/*.cpp src/lexicon/tests/*.cpp src/wiki/tests/*.cpp src/dict/tests/*.cpp)
 
 APP_READER_TARGET := bebook
 APP_WIKI_TARGET := bewiki
@@ -143,7 +145,7 @@ APP_TEST_TARGET := test
 
 # bedict: the standalone dictionary app (search + on-screen keyboard). Reuses the reader's
 # common code + lexicon; needs no ZIM/zstd. Its own main lives under src/dict.
-DICTAPP_SRC     := $(COMMON_SRC) $(wildcard src/dict/*.cpp src/dict/views/*.cpp)
+DICTAPP_SRC     := $(COMMON_SRC) $(DICT_LIB_SRC) src/dict/main.cpp
 APP_DICT_TARGET := bedict
 
 ROTOZOOM_OBJECT := $(OBJ_DIR)/SDL_rotozoom.o

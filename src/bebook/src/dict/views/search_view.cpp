@@ -1,5 +1,7 @@
 #include "./search_view.h"
 
+#include "dict/match_detail.h"
+
 #include "reader/system_styling.h"
 #include "reader/view_stack.h"
 #include "reader/views/word_meaning_view.h"
@@ -9,16 +11,25 @@
 
 #include "text/font.h"
 
+#include "reader/word_preview.h"
+
 #include "util/sdl_font_cache.h"
 #include "util/sdl_utils.h"
 
 #include <algorithm>
 #include <memory>
+#include <set>
 
 namespace
 {
 
 constexpr int MARGIN = 16;
+
+// Three candidates is about what a mistyped Italian word needs, and it is what leaves the
+// panel below room to answer in full rather than teasing.
+constexpr int MAX_MATCHES = 3;
+// With no conjugation to show, the freed lines go to senses instead.
+constexpr size_t MAX_SENSES_NO_CONJ = 4;
 
 // ASCII-only on-screen keyboard: lower-case QWERTY plus the apostrophe for Italian elisions
 // (l', dell'). Words are searched folded, so ASCII finds the accented entries. Space isn't
@@ -78,13 +89,116 @@ void SearchView::set_query(const std::string &q)
 
 void SearchView::refresh_results()
 {
-    results = lexicon.search(query);
-    result_index = 0;
-    result_scroll = 0;
-    if (results.empty() && focus == Focus::Results)
+    // Deduped by lemma, not by surface: "cane" matches the lemmas cane, cana, cagna and
+    // cano, which are four different dictionary entries that happen to share a spelling.
+    // Keying on the surface would show "cane cane cane" and hide the distinction the strip
+    // exists to make. The first surface for each lemma is kept, so "faccio" stays the way
+    // in to fare rather than the infinitive.
+    const std::vector<lexicon::SearchHit> hits = lexicon.search(query);
+    results.clear();
+    std::set<std::string> seen;
+    for (const auto &h : hits)
     {
-        focus = Focus::Keyboard;
+        if (static_cast<int>(results.size()) >= MAX_MATCHES)
+        {
+            break;
+        }
+        if (seen.insert(h.lemma).second)
+        {
+            results.push_back(h);
+        }
     }
+    result_index = 0;
+    rebuild_detail();
+    _needs_render = true;
+}
+
+void SearchView::rebuild_detail()
+{
+    detail = Detail{};
+    conj_tables.clear();
+
+    if (result_index < 0 || result_index >= static_cast<int>(results.size()))
+    {
+        return;
+    }
+
+    const lexicon::SearchHit &hit = results[result_index];
+    const std::vector<lexicon::LemmaEntry> analyses = lexicon.lemmatize(hit.word);
+
+    // The reading whose lemma the search agreed on, so the panel explains the match the
+    // user is actually looking at rather than an unrelated homograph.
+    const lexicon::LemmaEntry *entry = nullptr;
+    for (const auto &a : analyses)
+    {
+        if (a.lemma == hit.lemma) { entry = &a; break; }
+    }
+    if (entry == nullptr && !analyses.empty())
+    {
+        entry = &analyses.front();
+    }
+
+    const std::string lemma = entry ? entry->lemma : hit.lemma;
+    const std::string features = entry ? entry->features : std::string();
+
+    if (entry && entry->is_verb())
+    {
+        conj_tables = lexicon.conjugations(lemma);
+    }
+    detail.person = dict::person_index_for_features(features);
+    detail.conj = dict::pick_table(conj_tables, dict::tense_key_for_features(features));
+
+    // "io faccio -> fare · Indicativo Presente": the form, what it belongs to, and which
+    // table is on screen. For a verb the tense names itself, so describe_morphology would
+    // only repeat the person already spelled out in front.
+    std::string headline;
+    if (detail.person >= 0)
+    {
+        headline += std::string(lexicon::PERSON_LABELS[detail.person]) + " ";
+    }
+    headline += hit.word;
+    if (lemma != hit.word)
+    {
+        headline += " \xE2\x86\x92 " + lemma;
+    }
+    const std::string tail = detail.conj
+        ? detail.conj->display_name
+        : (entry ? lexicon::describe_morphology(entry->pos, entry->features) : std::string());
+    if (!tail.empty())
+    {
+        headline += "  \xC2\xB7  " + tail;
+    }
+    detail.headline = headline;
+
+    const std::vector<lexicon::Sense> senses = lexicon.lookup_it_en(lemma);
+    const size_t room = detail.conj ? 1 : MAX_SENSES_NO_CONJ;
+    for (size_t i = 0; i < senses.size() && detail.senses.size() < room; ++i)
+    {
+        detail.senses.push_back(senses[i].gloss);
+    }
+
+    // Only readings of *this* lemma count. The strip already exposes the other lemmas a
+    // surface can belong to, so counting all of them would offer the modal for every
+    // homograph in order to show what is on screen already. "sono" still qualifies: essere
+    // 1sg and essere 3pl are two readings of one lemma, and only the modal separates them.
+    size_t readings = 0;
+    for (const auto &a : analyses)
+    {
+        if (a.lemma == lemma) { ++readings; }
+    }
+    detail.more = dict::has_more_to_show(
+        std::max<size_t>(readings, 1), conj_tables.size(), senses.size(), detail.senses.size());
+}
+
+void SearchView::cycle_match(int dir)
+{
+    const int n = static_cast<int>(results.size());
+    if (n <= 1)
+    {
+        return;
+    }
+    result_index = ((result_index + dir) % n + n) % n;
+    rebuild_detail();
     _needs_render = true;
 }
 
@@ -111,8 +225,13 @@ void SearchView::activate_key()
 void SearchView::move_key(int dr, int dc)
 {
     const auto &kb = keyboard();
-    kb_row = std::max(0, std::min(kb_row + dr, static_cast<int>(kb.size()) - 1));
-    kb_col = std::max(0, std::min(kb_col + dc, static_cast<int>(kb[kb_row].size()) - 1));
+    const int rows = static_cast<int>(kb.size());
+    // Wrapping, so no press is ever a no-op: an edge that silently swallows input reads
+    // as the app having stopped responding.
+    kb_row = ((kb_row + dr) % rows + rows) % rows;
+    const int cols = static_cast<int>(kb[kb_row].size());
+    kb_col = ((kb_col + dc) % cols + cols) % cols;
+    if (kb_col >= cols) { kb_col = cols - 1; }
     _needs_render = true;
 }
 
@@ -128,60 +247,27 @@ void SearchView::open_selected()
 
 void SearchView::on_keypress(SDLKey key)
 {
-    if (focus == Focus::Results)
-    {
-        switch (key)
-        {
-            case SW_BTN_UP:
-                if (result_index > 0) { --result_index; _needs_render = true; }
-                break;
-            case SW_BTN_DOWN:
-                if (result_index + 1 < static_cast<int>(results.size()))
-                {
-                    ++result_index;
-                    _needs_render = true;
-                }
-                else
-                {
-                    focus = Focus::Keyboard;  // fall out of the bottom into the keyboard
-                    kb_row = 0;
-                    _needs_render = true;
-                }
-                break;
-            case SW_BTN_A:
-                open_selected();
-                break;
-            case SW_BTN_B:
-                focus = Focus::Keyboard;
-                _needs_render = true;
-                break;
-            default:
-                break;
-        }
-        return;
-    }
-
-    // Keyboard focus.
     switch (key)
     {
-        case SW_BTN_UP:
-            if (kb_row == 0 && !results.empty())
-            {
-                focus = Focus::Results;
-                _needs_render = true;
-            }
-            else
-            {
-                move_key(-1, 0);
-            }
-            break;
+        case SW_BTN_UP:    move_key(-1, 0); break;
         case SW_BTN_DOWN:  move_key(1, 0); break;
         case SW_BTN_LEFT:  move_key(0, -1); break;
         case SW_BTN_RIGHT: move_key(0, 1); break;
+
         case SW_BTN_A:     activate_key(); break;
+        case SW_BTN_B:     backspace(); break;
+
+        // Cycle the matches without leaving the keyboard, which is the whole point: in
+        // the common case there is no focus to move at all.
         case SW_BTN_L1:
-        case SW_BTN_Y:     backspace(); break;   // quick backspace
-        case SW_BTN_B:     _is_done = true; break;
+        case SW_BTN_L2:    cycle_match(-1); break;
+        case SW_BTN_R1:
+        case SW_BTN_R2:    cycle_match(1); break;
+
+        // Only offered when the modal has something the panel does not already show.
+        case SW_BTN_Y:     if (detail.more) { open_selected(); } break;
+
+        case SW_BTN_START: _is_done = true; break;
         default:           break;
     }
 }
@@ -194,12 +280,12 @@ void SearchView::on_keyheld(SDLKey key, uint32_t held_time_ms)
         case SW_BTN_DOWN:
         case SW_BTN_LEFT:
         case SW_BTN_RIGHT:
-            if (nav_throttle(held_time_ms)) on_keypress(key);
+            if (nav_throttle(held_time_ms)) { on_keypress(key); }
             break;
-        // Held backspace erases continuously. Its own throttle, because deleting is
-        // easier to overshoot than moving a cursor and wants a beat longer before it runs.
+        // Held backspace erases continuously. Its own throttle, because deleting
+        // overshoots more easily than moving a cursor and wants a beat longer first.
         case SW_BTN_B:
-            if (backspace_throttle(held_time_ms)) backspace();
+            if (backspace_throttle(held_time_ms)) { backspace(); }
             break;
         default:
             break;
@@ -249,44 +335,151 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
     const int cell_h = line_h + 6;
     const int kb_top = SCREEN_HEIGHT - MARGIN - static_cast<int>(kb.size()) * cell_h;
 
-    // --- Results (between bar and keyboard) -------------------------------------------
-    const int results_top = y;
-    const int results_bottom = kb_top - 6;
-    const int visible = std::max(1, (results_bottom - results_top) / line_h);
-
-    if (result_index < result_scroll) result_scroll = result_index;
-    if (result_index >= result_scroll + visible) result_scroll = result_index - visible + 1;
-
-    if (results.empty() && !query.empty())
+    // --- Match strip ------------------------------------------------------------------
+    // All the candidates at once, active one pilled. L1/R1 cycle it; the panel below
+    // follows, so choosing between matches never means leaving the keyboard.
+    const int strip_y = y;
+    if (results.empty())
     {
-        blit(dest, font, "Nessun risultato", cx0, results_top, theme.secondary_text, theme.background);
-    }
-    for (int i = 0; i < visible; ++i)
-    {
-        const int idx = result_scroll + i;
-        if (idx >= static_cast<int>(results.size())) break;
-        const auto &hit = results[idx];
-        const int ry = results_top + i * line_h;
-        const bool sel = (focus == Focus::Results && idx == result_index);
-        if (sel)
+        if (!query.empty())
         {
-            SDL_Rect hl = { static_cast<Sint16>(cx0 - 4), static_cast<Sint16>(ry - 1),
-                            static_cast<Uint16>(cx1 - cx0 + 8), static_cast<Uint16>(line_h + 2) };
-            SDL_FillRect(dest, &hl, mapc(theme.highlight_background));
+            blit(dest, font, "Nessun risultato", cx0, strip_y,
+                 theme.secondary_text, theme.background);
         }
-        const SDL_Color fg = sel ? theme.highlight_text : theme.main_text;
-        const SDL_Color bg = sel ? theme.highlight_background : theme.background;
-        int wx = cx0 + blit(dest, font, hit.word, cx0, ry, fg, bg);
-        if (hit.lemma != hit.word)
+    }
+    else
+    {
+        int sx = cx0;
+        for (int i = 0; i < static_cast<int>(results.size()); ++i)
         {
-            blit(dest, font, "  \xE2\x86\x92 " + hit.lemma, wx, ry,
-                 sel ? theme.highlight_text : theme.secondary_text, bg);
+            const std::string &w = results[i].lemma;
+            int ww = 0;
+            text::text_size(font, w.c_str(), &ww, nullptr);
+
+            const bool sel = (i == result_index);
+            if (sel)
+            {
+                SDL_Rect pill = { static_cast<Sint16>(sx - 6), static_cast<Sint16>(strip_y - 1),
+                                  static_cast<Uint16>(ww + 12), static_cast<Uint16>(line_h + 2) };
+                SDL_FillRect(dest, &pill, mapc(theme.highlight_background));
+            }
+            blit(dest, font, w, sx, strip_y,
+                 sel ? theme.highlight_text : theme.secondary_text,
+                 sel ? theme.highlight_background : theme.background);
+            sx += ww + 26;
+        }
+
+        if (results.size() > 1)
+        {
+            char pos[24];
+            snprintf(pos, sizeof(pos), "%d/%d", result_index + 1,
+                     static_cast<int>(results.size()));
+            int pw = 0;
+            text::text_size(font, pos, &pw, nullptr);
+            blit(dest, font, pos, cx1 - pw, strip_y, theme.secondary_text, theme.background);
+        }
+    }
+    y = strip_y + line_h + 4;
+    {
+        SDL_Rect rule = { static_cast<Sint16>(cx0), static_cast<Sint16>(y),
+                          static_cast<Uint16>(cx1 - cx0), 1 };
+        SDL_FillRect(dest, &rule, mapc(theme.secondary_text));
+        y += 6;
+    }
+
+    // --- Detail panel -----------------------------------------------------------------
+    if (!detail.headline.empty())
+    {
+        blit(dest, font, detail.headline, cx0, y, theme.main_text, theme.background);
+        y += line_h;
+
+        for (const auto &g : detail.senses)
+        {
+            blit(dest, font, g, cx0, y, theme.secondary_text, theme.background);
+            y += line_h;
+        }
+
+        if (detail.conj != nullptr)
+        {
+            y += line_h / 3;
+
+            // Widest pronoun and widest form, so the plural column clears the singular one
+            // whatever the tense -- compound forms ("siamo andati") are far wider.
+            int pron_w = 0;
+            for (const char *label : lexicon::PERSON_LABELS)
+            {
+                int w = 0;
+                text::text_size(font, label, &w, nullptr);
+                pron_w = std::max(pron_w, w);
+            }
+            int form_w = 0;
+            for (const auto &f : detail.conj->forms)
+            {
+                int w = 0;
+                text::text_size(font, f.c_str(), &w, nullptr);
+                form_w = std::max(form_w, w);
+            }
+            const int pron_col = pron_w + 12;
+            const int avail = cx1 - cx0;
+
+            // Pack the plural column right after the widest singular form while that still
+            // leaves the plural form its full width; otherwise split the panel evenly and
+            // elide. Clamping the column on its own -- what this did before -- ran the
+            // singular form into the plural pronoun and clipped the plural form mid-word at
+            // the right edge, which is how passato prossimo rendered. There is no room here
+            // to fall back to six rows as the full view does, so the compact panel elides
+            // and Y opens the untruncated table.
+            int col2 = pron_col + form_w + 28;
+            if (col2 + pron_col + form_w > avail)
+            {
+                col2 = avail / 2;
+            }
+            const int cell_w = std::min(col2 - pron_col - 12, avail - col2 - pron_col);
+
+            // Singular beside its plural: three rows for six persons.
+            for (int i = 0; i < 3; ++i)
+            {
+                for (int half = 0; half < 2; ++half)
+                {
+                    const int idx = i + 3 * half;
+                    const int bx = cx0 + half * col2;
+                    // Mark the person the searched form actually is, so the eye lands on
+                    // it. A fill rather than a text colour, because highlight_text equals
+                    // main_text on some themes and would mark nothing at all.
+                    const bool is_match = (idx == detail.person);
+                    const std::string form =
+                        text::elide_to_width(font, detail.conj->forms[idx], cell_w);
+                    int fw = 0;
+                    text::text_size(font, form.c_str(), &fw, nullptr);
+                    if (is_match)
+                    {
+                        SDL_Rect pill = {
+                            static_cast<Sint16>(bx + pron_col - 5), static_cast<Sint16>(y - 1),
+                            static_cast<Uint16>(fw + 10), static_cast<Uint16>(line_h + 2) };
+                        SDL_FillRect(dest, &pill, mapc(theme.highlight_background));
+                    }
+                    blit(dest, font, lexicon::PERSON_LABELS[idx], bx, y,
+                         theme.secondary_text, theme.background);
+                    blit(dest, font, form, bx + pron_col, y,
+                         is_match ? theme.highlight_text : theme.main_text,
+                         is_match ? theme.highlight_background : theme.background);
+                }
+                y += line_h;
+            }
         }
     }
 
     // --- Hint line (just above the keyboard) ------------------------------------------
-    blit(dest, font, "A scrivi   Y cancella   \xE2\x86\x91 risultati   B esci",
-         cx0, kb_top - line_h - 2, theme.secondary_text, theme.background);
+    // Only the keys that do something here: Y is absent whenever the modal would add
+    // nothing to what is already on screen.
+    {
+        std::string hint = "A scrivi   B canc.";
+        if (results.size() > 1) { hint += "   L/R voci"; }
+        if (detail.more)        { hint += "   Y dettagli"; }
+        hint += "   START esci";
+        blit(dest, font, hint, cx0, kb_top - line_h - 2,
+             theme.secondary_text, theme.background);
+    }
 
     // --- Keyboard ---------------------------------------------------------------------
     for (int r = 0; r < static_cast<int>(kb.size()); ++r)
@@ -297,7 +490,7 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
         {
             const std::string label(1, row[c]);
             const int kx = cx0 + c * cell_w;
-            const bool sel = (focus == Focus::Keyboard && r == kb_row && c == kb_col);
+            const bool sel = (r == kb_row && c == kb_col);
             SDL_Rect cell = { static_cast<Sint16>(kx + 1), static_cast<Sint16>(ky + 1),
                               static_cast<Uint16>(cell_w - 2), static_cast<Uint16>(cell_h - 2) };
             SDL_FillRect(dest, &cell, mapc(sel ? theme.highlight_background : theme.background));

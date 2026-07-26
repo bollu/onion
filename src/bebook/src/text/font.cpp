@@ -172,6 +172,38 @@ void text_size(const Font *font, const char *utf8, int *w, int *h)
     }
 }
 
+std::string elide_to_width(const Font *font, const std::string &s, int max_px)
+{
+    int w = 0;
+    text_size(font, s.c_str(), &w, nullptr);
+    if (w <= max_px)
+    {
+        return s;
+    }
+
+    const std::string ellipsis = "\xE2\x80\xA6";  // …
+    std::string out = s;
+    while (!out.empty())
+    {
+        // Drop the final UTF-8 code point (skip continuation bytes 10xxxxxx).
+        size_t i = out.size() - 1;
+        while (i > 0 && (static_cast<unsigned char>(out[i]) & 0xC0) == 0x80)
+        {
+            --i;
+        }
+        out.erase(i);
+
+        const std::string candidate = out + ellipsis;
+        int cw = 0;
+        text_size(font, candidate.c_str(), &cw, nullptr);
+        if (cw <= max_px)
+        {
+            return candidate;
+        }
+    }
+    return ellipsis;
+}
+
 int font_line_height(const Font *font)
 {
     if (!font)

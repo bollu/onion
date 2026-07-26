@@ -58,41 +58,6 @@ std::vector<text::Line> layout_paragraph_with(
     );
 }
 
-// Truncate `s` to fit `max_px`, appending an ellipsis when it does not. UTF-8 aware: whole
-// code points are dropped from the end so a multibyte glyph is never split. Used for the
-// one-line word-select meaning preview.
-std::string elide_to_width(text::Font *font, const std::string &s, int max_px)
-{
-    int w = 0;
-    text::text_size(font, s.c_str(), &w, nullptr);
-    if (w <= max_px)
-    {
-        return s;
-    }
-
-    const std::string ellipsis = "\xE2\x80\xA6";  // …
-    std::string out = s;
-    while (!out.empty())
-    {
-        // Drop the final UTF-8 code point (skip continuation bytes 10xxxxxx).
-        size_t i = out.size() - 1;
-        while (i > 0 && (static_cast<unsigned char>(out[i]) & 0xC0) == 0x80)
-        {
-            --i;
-        }
-        out.erase(i);
-
-        std::string candidate = out + ellipsis;
-        int cw = 0;
-        text::text_size(font, candidate.c_str(), &cw, nullptr);
-        if (cw <= max_px)
-        {
-            return candidate;
-        }
-    }
-    return ellipsis;
-}
-
 // Build the StyledText for a laid-out text line, exactly as render() does.
 text::StyledText styled_for(const TextLine *tl, const text::Font *font)
 {
@@ -747,7 +712,8 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         SDL_FillRect(dest_surface, &rule,
             SDL_MapRGB(dest_surface->format, theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b));
 
-        const std::string shown = elide_to_width(font, state->ws_preview, state->text_width());
+        const std::string shown =
+            text::elide_to_width(font, state->ws_preview, state->text_width());
         text::draw_text(
             dest_surface, font, shown.c_str(),
             margin_x, bar_y + leading_above + ascent,
