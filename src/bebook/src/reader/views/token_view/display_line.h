@@ -38,6 +38,11 @@ struct TextLine: public DisplayLine
     // addresses by counting the characters a line consumed. Editing the text would
     // silently move every saved reading position.
     bool trailing_hyphen = false;
+
+    // First line of its paragraph, and so the one that carries the indent. The line breaker
+    // only narrows this line by the indent; something has to move its pen too, or the space
+    // appears at the right-hand end instead of the left.
+    bool first_in_paragraph = false;
     text::Fixed natural_width = 0;
     text::Fixed target_width = 0;
     uint32_t stretch_gaps = 0;

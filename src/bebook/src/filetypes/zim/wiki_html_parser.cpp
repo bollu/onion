@@ -212,10 +212,12 @@ public:
         }
         else if (tag == "p")
         {
-            if (list_depth == 0)
-            {
-                emit(Node::Type::SectionSeparator);
-            }
+            // No separator between paragraphs. A blank line costs a whole line of an
+            // eleven-line screen, so a page of short paragraphs spent most of itself on
+            // gaps. The first-line indent marks a new paragraph instead, which is what a
+            // printed book does and what the space here is worth. Headings and lists keep
+            // their separator, because those are real breaks in the article rather than
+            // the next sentence of the same thought.
         }
         else if (tag == "em" || tag == "i" || tag == "dfn" || tag == "var")
         {
@@ -253,10 +255,7 @@ public:
         }
         else if (tag == "p")
         {
-            if (list_depth == 0)
-            {
-                emit(Node::Type::SectionSeparator);
-            }
+            // Closing a paragraph is not a break either; see the open tag above.
         }
         else if (tag == "em" || tag == "i" || tag == "dfn" || tag == "var")
         {

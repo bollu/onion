@@ -37,8 +37,10 @@
 // than the font's own default, which is tuned for UI density.
 #define LINE_HEIGHT_PERCENT 125
 
-// First-line indent, as a percentage of the font size (i.e. roughly of an em).
-#define PARAGRAPH_INDENT_PERCENT 0
+// First-line indent, as a percentage of the font size (i.e. roughly of an em). This is
+// what separates paragraphs now that they no longer get a blank line between them: on a
+// screen holding eleven lines, a blank per paragraph spent most of the page on gaps.
+#define PARAGRAPH_INDENT_PERCENT 120
 
 #define DEFAULT_JUSTIFY    true
 #define DEFAULT_HYPHENATE  true

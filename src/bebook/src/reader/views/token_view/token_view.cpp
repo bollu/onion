@@ -109,6 +109,18 @@ WordBox span_box(
     return {x0, x1};
 }
 
+// The indent the first line of a paragraph is drawn at. The line breaker already narrowed
+// that line by this much; without shifting the pen too, the space would sit at the right
+// end of the line rather than the left, which is not an indent at all.
+int line_indent(const text::Font *font, const TextLine *tl)
+{
+    if (tl == nullptr || !tl->first_in_paragraph || tl->centered)
+    {
+        return 0;
+    }
+    return static_cast<int>(font->size_px) * PARAGRAPH_INDENT_PERCENT / 100;
+}
+
 WordBox word_box(
     const TextLine *tl, const text::Font *font, int text_width, int margin_x,
     const WordSpan &span
@@ -358,9 +370,10 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 ln.target_width = text_line->target_width;
                 ln.stretch_gaps = text_line->stretch_gaps;
 
+                const int indent = line_indent(font, text_line);
                 text::draw_line_aligned(
                     dest_surface, styled, ln,
-                    margin_x, state->text_width(),
+                    margin_x + indent, state->text_width() - indent,
                     line_y + leading_above + ascent,
                     text_line->centered ? text::Align::Center : text::Align::Justify,
                     theme.main_text, theme.background
@@ -482,9 +495,10 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             SDL_FillRect(dest_surface, &box, fill);
 
             text::StyledText styled = styled_for(tl, font);
+            const int indent = line_indent(font, tl);
             text::draw_line_aligned(
                 dest_surface, styled, as_text_line(tl),
-                margin_x, state->text_width(),
+                margin_x + indent, state->text_width() - indent,
                 box_y + leading_above + ascent, line_align(tl),
                 theme.main_text, theme.link_background,
                 &box
@@ -542,7 +556,8 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 }
             }
 
-            WordBox wb = word_box(tl, font, state->text_width(), margin_x, sp);
+            const int indent = line_indent(font, tl);
+            WordBox wb = word_box(tl, font, state->text_width() - indent, margin_x + indent, sp);
 
             const int pad = 2;
             const Sint16 box_y = static_cast<Sint16>(text_top + state->ws_line * line_height);
@@ -571,7 +586,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             text::StyledText styled = styled_for(tl, font);
             text::draw_line_aligned(
                 dest_surface, styled, as_text_line(tl),
-                margin_x, state->text_width(),
+                margin_x + indent, state->text_width() - indent,
                 box_y + leading_above + ascent, line_align(tl),
                 theme.highlight_text, hlbg,
                 &box

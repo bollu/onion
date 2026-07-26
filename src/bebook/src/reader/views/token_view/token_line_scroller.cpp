@@ -137,6 +137,7 @@ std::vector<std::unique_ptr<DisplayLine>> TokenLineScroller::render_display_line
             std::string line_text = text.substr(laid_out.offset, laid_out.length);
 
             auto display_line = std::make_unique<TextLine>(address, line_text, centered);
+            display_line->first_in_paragraph = lines.empty();
             display_line->trailing_hyphen = laid_out.trailing_hyphen;
             display_line->natural_width = laid_out.natural_width;
             display_line->target_width = laid_out.target_width;

@@ -74,9 +74,13 @@ TEST(ConjugateGloss, OnlyTheHeadWordInflects)
     EXPECT_EQ(conjugate_gloss("to look at", 2, "presente"), "he/she looks at");
 }
 
-TEST(ConjugateGloss, WorksWithoutTheLeadingTo)
+TEST(ConjugateGloss, OnlyInfinitiveGlossesAreConjugated)
 {
-    EXPECT_EQ(conjugate_gloss("make", 5, "passato_remoto"), "they made");
+    // Many glosses are prose about the word rather than a verb to inflect. Treating the
+    // first word of one as a verb gave "he/she Useds" for essere.
+    EXPECT_EQ(conjugate_gloss("Used as a copula. to be", 2, "presente"), "");
+    EXPECT_EQ(conjugate_gloss("dog", 2, "presente"), "");
+    EXPECT_EQ(conjugate_gloss("to be", 2, "presente"), "he/she is");
 }
 
 TEST(ConjugateGloss, BePicksTheRightPastArm)

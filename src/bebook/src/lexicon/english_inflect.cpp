@@ -151,6 +151,15 @@ std::string conjugate_gloss(const std::string &gloss, int person, const std::str
         return "";
     }
 
+    // Only a gloss written as an infinitive can be conjugated. Plenty are prose instead --
+    // "Used as a copula. to be" -- and inflecting the first word of one of those produced
+    // "he/she Useds". A gloss that does not start with "to " is a description of the word,
+    // not a verb to put in a person, so it is left exactly as written.
+    if (gloss.rfind("to ", 0) != 0)
+    {
+        return "";
+    }
+
     std::string head, tail;
     split_head(gloss, head, tail);
     if (head.empty())
