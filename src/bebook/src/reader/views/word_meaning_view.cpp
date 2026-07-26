@@ -362,78 +362,71 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         }
         else
         {
-            head = surface + " \xE2\x86\x92 " + lemma;  // ->
+            // "lui/lei volle (passato remoto) → volere": the form as it appeared, said the
+            // way a learner needs to hear it, then the dictionary form it resolves to. The
+            // person and tense used to sit on a line of their own below, which made the
+            // header three lines to say what fits in one.
+            const auto &entry = analyses[active_analysis].lemma;
+            const int person = lexicon::person_index_for_features(entry.features);
+            const std::string tense = lexicon::tense_name_for_features(entry.features);
+
+            head.clear();
+            if (person >= 0)
+            {
+                head += std::string(lexicon::PERSON_LABELS[person]) + " ";
+            }
+            head += surface;
+            if (!tense.empty())
+            {
+                head += " (" + tense + ")";
+            }
+            head += " \xE2\x86\x92 " + lemma;  // ->
             runs.push_back({ static_cast<uint32_t>(head.size() - lemma.size()),
                              static_cast<uint32_t>(lemma.size()), text::Style::Bold });
         }
 
-        // The head keeps two thirds at most, so a long one cannot crowd the gloss out
-        // entirely. Elision here is a last resort; ordinary entries are far shorter.
-        const std::string head_shown = text::elide_to_width(font, head, cw * 2 / 3);
+        // The header gets the whole width. It used to share the line with the gloss, which
+        // was fine when it was a bare "volle → volere" and cut the lemma off the moment the
+        // person and tense joined it. The gloss has its own line below.
+        const std::string head_shown = text::elide_to_width(font, head, cw);
         if (head_shown != head)
         {
             runs.clear();  // offsets no longer address the shown text
         }
         text::StyledText st = styled_of(head_shown, runs.empty() ? nullptr : &runs);
         auto head_lines = text::layout_paragraph(st, font, cw, text::Align::Left, false);
-
-        // measure_styled, not text_size: the lemma is drawn bold, and measuring the plain
-        // string put the separator underneath the last glyph of the lemma.
-        const int head_w = text::fixed_floor(
-            text::measure_styled(st, 0, st.length) + text::FIXED_ONE - 1);
         if (!head_lines.empty())
         {
             text::draw_line_aligned(dest, st, head_lines.front(), cx0, cw, y + ascent,
                                     text::Align::Left, theme.main_text, theme.background,
                                     &content_clip);
         }
+        y += line_h;
 
+        // The meaning, on its own line: "lui/lei volle (passato remoto) → volere" then
+        // "to want" is the pairing a learner is actually here for.
         if (active_analysis >= 0 && !analyses[active_analysis].it_en.empty())
         {
-            // Bold is synthesised by emboldening, which adds ink without adding advance, so
-            // the lemma's last glyph paints slightly past its measured width. Sit the
-            // separator off it rather than flush against it.
-            const int gap = PAD_X / 2;
-            const std::string sep = "\xC2\xB7";  // ·
-            int sep_w = 0;
-            text::text_size(font, sep.c_str(), &sep_w, nullptr);
-
-            const int sep_x = cx0 + head_w + gap;
-            const int gloss_x = sep_x + sep_w + gap;
-            const int gloss_w = cx1 - gloss_x;
-            if (gloss_w > 0)
-            {
-                blit_line(dest, font, sep, sep_x, y, theme.secondary_text, theme.background);
-                blit_line(dest, font,
-                          text::elide_to_width(
-                              font, analyses[active_analysis].it_en.front().gloss, gloss_w),
-                          gloss_x, y, theme.secondary_text, theme.background);
-            }
+            blit_line(dest, font,
+                      text::elide_to_width(
+                          font, analyses[active_analysis].it_en.front().gloss, cw),
+                      cx0, y, theme.secondary_text, theme.background);
         }
         y += line_h;
     }
 
-    // --- Header line 2: morphology, which gets the whole width ------------------------
-    //
-    // 59% of forms produce a morphology string past ~21 characters, and the longest,
-    // "verbo · congiuntivo · imperfetto · lui/lei", measures 537px beside the ‹k/n› counter
-    // in a 538px column. It exactly fills this line, so it can neither share one nor be
-    // elided without losing content the popup shows nowhere else.
-    if (active_analysis >= 0)
+    // The analysis counter, on the gloss line. The morphology used to have a line of its
+    // own here; the person and tense now sit in the header where they belong, and repeating
+    // "verbo" for a word already labelled as a verb was never worth a line of a small
+    // screen.
+    if (active_analysis >= 0 && analyses.size() > 1)
     {
-        const int morph_y = y;
-        const std::string &morph = analyses[active_analysis].lemma.morphology_human;
-        y = morph.empty() ? y + line_h
-                          : draw_prose(morph, nullptr, cx0, y, cw, theme.secondary_text);
-        if (analyses.size() > 1)
-        {
-            char buf[24];
-            snprintf(buf, sizeof(buf), "\xE2\x80\xB9%d/%zu\xE2\x80\xBA",  // <k/n>
-                     active_analysis + 1, analyses.size());
-            int w = 0;
-            text::text_size(font, buf, &w, nullptr);
-            blit_line(dest, font, buf, cx1 - w, morph_y, theme.secondary_text, theme.background);
-        }
+        char buf[24];
+        snprintf(buf, sizeof(buf), "\xE2\x80\xB9%d/%zu\xE2\x80\xBA",  // <k/n>
+                 active_analysis + 1, analyses.size());
+        int w = 0;
+        text::text_size(font, buf, &w, nullptr);
+        blit_line(dest, font, buf, cx1 - w, y - line_h, theme.secondary_text, theme.background);
     }
 
     y += PAD_Y / 2;

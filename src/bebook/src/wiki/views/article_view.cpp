@@ -243,28 +243,36 @@ void ArticleView::update_title(DocAddr address)
     }
     trail.push_back(state->title);
 
-    // The section you are in, last. A bold heading says a section started; once it has
-    // scrolled off there is nothing to say which one you are still inside. It goes at the
-    // end so it is the first thing dropped when the line is short -- where you are in the
-    // archive matters more than where you are in the article.
+
+    text::Font *font = state->sys_styling.get_loaded_font();
+    const int avail = state->token_view->title_text_width();
+    auto width_of = [font](const std::string &s) {
+        int w = 0;
+        text::text_size(font, s.c_str(), &w, nullptr);
+        return w;
+    };
+
+    std::string bar = wiki::breadcrumb(trail, avail, width_of);
+
+    // The section you are in, appended only if it still fits. It cannot go into the trail:
+    // breadcrumb() always keeps the last element and drops from the front, so a section at
+    // the end would be the last thing dropped rather than the first -- which is how the
+    // article's own title came to vanish, leaving only the section on screen. Where you are
+    // in the archive matters more than where you are in the article.
     if (position.toc_index < toc.size())
     {
         const std::string &section = toc[position.toc_index].display_name;
         if (!section.empty() && section != state->title)
         {
-            trail.push_back(section);
+            const std::string with_section = bar + " \xE2\x80\xBA " + section;  // " › "
+            if (width_of(with_section) <= avail)
+            {
+                bar = with_section;
+            }
         }
     }
 
-    text::Font *font = state->sys_styling.get_loaded_font();
-    state->token_view->set_title(wiki::breadcrumb(
-        trail,
-        state->token_view->title_text_width(),
-        [font](const std::string &s) {
-            int w = 0;
-            text::text_size(font, s.c_str(), &w, nullptr);
-            return w;
-        }));
+    state->token_view->set_title(bar);
 
     const uint32_t percent =
         (state->token_view_styling.get_progress_reporting() == ProgressReporting::CHAPTER_PERCENT

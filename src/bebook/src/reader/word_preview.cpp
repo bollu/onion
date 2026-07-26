@@ -1,6 +1,5 @@
 #include "reader/word_preview.h"
 
-#include "dict/match_detail.h"
 #include "lexicon/english_inflect.h"
 #include "lexicon/italian_article.h"
 #include "lexicon/lexicon_service.h"
@@ -60,7 +59,7 @@ WordPreview summarize_word(const lexicon::LexiconService &lexicon, const std::st
 
     // Inflect each gloss to match, then drop the pronoun from all but the first: "they made,
     // created" rather than "they made, they created", which is what saying it per gloss gave.
-    const std::string tense = dict::tense_key_for_features(entry.features);
+    const std::string tense = lexicon::tense_key_for_features(entry.features);
 
     for (const auto &sense : senses)
     {

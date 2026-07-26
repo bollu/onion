@@ -356,3 +356,65 @@ TEST(PersonIndexForFeatures, FormsWithoutAPersonReportNone)
     EXPECT_EQ(person_index_for_features("base"), -1);
     EXPECT_EQ(person_index_for_features("m+pl"), -1) << "a noun plural is not a verb person";
 }
+
+TEST(TenseKeyForFeatures, IndicativeTensesMapToTheirTables)
+{
+    ASSERT_EQ(tense_key_for_features("pres+1+s"), "presente");
+    ASSERT_EQ(tense_key_for_features("impf+1+s"), "imperfetto");
+    ASSERT_EQ(tense_key_for_features("fut+3+p"), "futuro_semplice");
+    ASSERT_EQ(tense_key_for_features("cond+2+s"), "condizionale");
+}
+TEST(TenseKeyForFeatures, ThePassatoRemotoHasItsOwnTable)
+{
+    // Until the tense existed this fell through to the fallback, so "feci" opened on the
+    // present -- indistinguishable from an unrecognised code, which is why it went unseen.
+    ASSERT_EQ(tense_key_for_features("rem+1+s"), "passato_remoto");
+    ASSERT_EQ(tense_key_for_features("rem+3+p"), "passato_remoto");
+}
+TEST(TenseKeyForFeatures, AParticipleOpensOnTheCompoundTense)
+{
+    // Someone looking up "andato" is holding half of "sono andato".
+    ASSERT_EQ(tense_key_for_features("part"), "passato_prossimo");
+}
+TEST(TenseKeyForFeatures, MoodsWithoutATableFallBackToThePresent)
+{
+    // Only the indicative has tables, so a subjunctive form has no tense of its own to
+    // show. It must not resolve to "imperfetto" just because the token is in there.
+    ASSERT_EQ(tense_key_for_features("sub+impf+1+s"), "presente");
+    ASSERT_EQ(tense_key_for_features("sub+pres+3+p"), "presente");
+    ASSERT_EQ(tense_key_for_features("impr+2+s"), "presente");
+}
+TEST(TenseKeyForFeatures, NonFiniteAndUnknownFallBackToThePresent)
+{
+    ASSERT_EQ(tense_key_for_features("inf"), "presente");
+    ASSERT_EQ(tense_key_for_features("ger"), "presente");
+    ASSERT_EQ(tense_key_for_features("base"), "presente");
+    ASSERT_EQ(tense_key_for_features(""), "presente");
+    ASSERT_EQ(tense_key_for_features("nonsense+9"), "presente");
+}
+
+TEST(TenseNameForFeatures, FullWordsForThePopupHeader)
+{
+    // The popup has a whole line, so it wants "passato remoto" rather than the peek's
+    // "pass. rem." -- the shorthand exists only because one line had to hold two things.
+    EXPECT_EQ(tense_name_for_features("rem+3+s"), "passato remoto");
+    EXPECT_EQ(tense_name_for_features("pres+1+s"), "presente");
+    EXPECT_EQ(tense_name_for_features("impf+2+p"), "imperfetto");
+    EXPECT_EQ(tense_name_for_features("part"), "participio");
+}
+
+TEST(TenseNameForFeatures, MoodQualifiesTheTense)
+{
+    // A subjunctive imperfect is not an imperfect; dropping the mood would make "volesse"
+    // read as "voleva".
+    EXPECT_EQ(tense_name_for_features("sub+impf+1+s"), "congiuntivo imperfetto");
+    EXPECT_EQ(tense_name_for_features("impr+2+s"), "imperativo");
+}
+
+TEST(TenseNameForFeatures, NothingToSayForAWordWithNoTense)
+{
+    // A noun gets no parenthetical at all rather than an empty pair of brackets.
+    EXPECT_EQ(tense_name_for_features("base"), "");
+    EXPECT_EQ(tense_name_for_features(""), "");
+    EXPECT_EQ(tense_name_for_features("m+pl"), "");
+}

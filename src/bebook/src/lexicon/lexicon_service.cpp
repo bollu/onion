@@ -622,6 +622,55 @@ int person_index_for_features(const std::string &features)
     return has_token(t, "p") ? person + 3 : person;
 }
 
+std::string tense_name_for_features(const std::string &features)
+{
+    const std::vector<std::string> t = split_feature_tokens(features);
+
+    // Mood first, since it qualifies the tense: a subjunctive imperfect is "congiuntivo
+    // imperfetto", not "imperfetto".
+    std::string out;
+    if (has_token(t, "sub"))       { out = "congiuntivo"; }
+    else if (has_token(t, "impr")) { return "imperativo"; }
+
+    auto add = [&out](const char *s) {
+        if (!out.empty()) { out += " "; }
+        out += s;
+    };
+
+    if (has_token(t, "pres"))      { add("presente"); }
+    else if (has_token(t, "impf")) { add("imperfetto"); }
+    else if (has_token(t, "rem"))  { add("passato remoto"); }
+    else if (has_token(t, "fut"))  { add("futuro"); }
+    else if (has_token(t, "cond")) { add("condizionale"); }
+    else if (has_token(t, "part")) { add("participio"); }
+    else if (has_token(t, "ger"))  { add("gerundio"); }
+    else if (has_token(t, "inf"))  { add("infinito"); }
+
+    return out;
+}
+
+std::string tense_key_for_features(const std::string &features)
+{
+    const std::vector<std::string> t = split_feature_tokens(features);
+
+    // Only the indicative has tables, so a subjunctive or imperative form has no tense of
+    // its own to show and falls back to the present.
+    if (has_token(t, "sub") || has_token(t, "impr"))
+    {
+        return "presente";
+    }
+
+    if (has_token(t, "impf")) { return "imperfetto"; }
+    if (has_token(t, "rem"))  { return "passato_remoto"; }
+    if (has_token(t, "fut"))  { return "futuro_semplice"; }
+    if (has_token(t, "cond")) { return "condizionale"; }
+
+    // A participle is the half of a compound tense the reader is most likely holding.
+    if (has_token(t, "part")) { return "passato_prossimo"; }
+
+    return "presente";
+}
+
 std::string abbreviate_morphology(const std::string &pos, const std::string &features)
 {
     const std::vector<std::string> t = split_feature_tokens(features);

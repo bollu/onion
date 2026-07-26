@@ -27,11 +27,12 @@
 
 namespace {
 
-// Lines the peek panel occupies at the top of the screen: the pairing being learned, and
-// what is true of the word. Permanent rather than shown-on-demand because the cursor is
-// always live -- a panel that came and went would shift every line of text under it as the
-// cursor moved. It costs a line of text, which is the trade this app exists to make.
-const int PEEK_LINES = 2;
+// Lines the peek panel occupies at the top of the screen. One: a second cost a line of
+// text on a screen that only has ten, which is too much to pay for a zone that mostly
+// repeats what the popup will say anyway. Permanent rather than shown-on-demand because the
+// cursor is always live -- a panel that came and went would shift the text under it as the
+// cursor moved.
+const int PEEK_LINES = 1;
 
 // Lays out one paragraph with the current font and column.
 //
@@ -705,72 +706,84 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
     }
 
-    // The peek panel: the top two lines, always present. The pairing being learned on the
-    // first, in the bright colour; what is true of the word rather than of this occurrence
-    // on the second, dim. A line each rather than two zones fighting over one, which is
-    // what made the meaning -- the half worth reading -- the half that got elided.
+    // The peek panel: the top line, always present. The pairing being learned on the left in
+    // the bright colour, what is true of the word on the right in the dim one -- position
+    // and colour separate them, so neither needs punctuation between them.
     //
-    // No rule beneath it. The colour change and the paragraph indent below already separate
-    // the panel from the page, and a full-width line across the screen for a boundary the
-    // eye finds anyway is chrome charged against a very small screen.
+    // No rule beneath it: the colour change and the paragraph indent below already mark the
+    // boundary, and a full-width line across a 640px screen is chrome charged against a very
+    // small display.
     {
-        SDL_Rect bar = {0, 0, (Uint16)SCREEN_WIDTH, (Uint16)(PEEK_LINES * line_height)};
+        SDL_Rect bar = {0, 0, (Uint16)SCREEN_WIDTH, (Uint16)line_height};
         SDL_FillRect(dest_surface, &bar,
             SDL_MapRGB(dest_surface->format, theme.background.r, theme.background.g, theme.background.b));
 
+        const int baseline = leading_above + ascent;
         const int avail = state->text_width();
+        const int gap = line_height / 2;
         const WordPreview &peek = state->ws_preview;
 
-        // Line one: the word as it appears, then as many senses as the width allows. One
-        // sense of the sixty-four "fare" has is a coin flip, so this takes what it can.
-        if (!peek.subject.empty())
+        auto width_of = [font](const std::string &t) {
+            int w = 0;
+            text::text_size(font, t.c_str(), &w, nullptr);
+            return w;
+        };
+
+        // Build the pairing, taking only as many senses as the width allows. One sense of
+        // the sixty-four "fare" has is a coin flip, so it takes what it can rather than
+        // always the first.
+        std::string meaning = peek.subject;
+        if (!peek.glosses.empty())
         {
-            std::string line = peek.subject;
-            if (!peek.glosses.empty())
+            const std::string arrow = " \xE2\x86\x92 ";  // " → "
+            const int budget = avail * 2 / 3;
+            std::string joined;
+            for (const auto &gloss : peek.glosses)
             {
-                const std::string arrow = " \xE2\x86\x92 ";  // " → "
-                std::string joined;
-                for (const auto &gloss : peek.glosses)
+                const std::string candidate = joined.empty() ? gloss : joined + ", " + gloss;
+                if (width_of(meaning + arrow + candidate) > budget)
                 {
-                    const std::string candidate = joined.empty() ? gloss : joined + ", " + gloss;
-                    int w = 0;
-                    text::text_size(font, (line + arrow + candidate).c_str(), &w, nullptr);
-                    if (w > avail)
-                    {
-                        break;
-                    }
-                    joined = candidate;
+                    break;
                 }
-                // Nothing fit whole: show the first elided rather than the word alone.
-                if (joined.empty())
-                {
-                    int subject_w = 0, arrow_w = 0;
-                    text::text_size(font, line.c_str(), &subject_w, nullptr);
-                    text::text_size(font, arrow.c_str(), &arrow_w, nullptr);
-                    joined = text::elide_to_width(
-                        font, peek.glosses.front(),
-                        std::max(0, avail - subject_w - arrow_w));
-                }
-                if (!joined.empty())
-                {
-                    line += arrow + joined;
-                }
+                joined = candidate;
             }
-            text::draw_text(
-                dest_surface, font, text::elide_to_width(font, line, avail).c_str(),
-                margin_x, leading_above + ascent,
-                theme.main_text, theme.background
-            );
+            if (joined.empty())
+            {
+                joined = text::elide_to_width(
+                    font, peek.glosses.front(),
+                    std::max(0, budget - width_of(meaning) - width_of(arrow)));
+            }
+            if (!joined.empty())
+            {
+                meaning += arrow + joined;
+            }
         }
 
-        if (!peek.grammar.empty())
+        int meaning_w = meaning.empty() ? 0 : width_of(meaning);
+        std::string grammar = peek.grammar;
+        int grammar_w = grammar.empty() ? 0 : width_of(grammar);
+
+        // Only elide when the two actually collide; the meaning is served first, since it
+        // carries the pairing while the grammar repeats what is derivable.
+        if (meaning_w + (meaning_w && grammar_w ? gap : 0) + grammar_w > avail)
         {
-            text::draw_text(
-                dest_surface, font,
-                text::elide_to_width(font, peek.grammar, avail).c_str(),
-                margin_x, line_height + leading_above + ascent,
-                theme.secondary_text, theme.background
-            );
+            meaning = text::elide_to_width(font, meaning, avail * 2 / 3);
+            meaning_w = meaning.empty() ? 0 : width_of(meaning);
+            grammar = text::elide_to_width(
+                font, grammar, std::max(0, avail - meaning_w - gap));
+            grammar_w = grammar.empty() ? 0 : width_of(grammar);
+        }
+
+        if (!meaning.empty())
+        {
+            text::draw_text(dest_surface, font, meaning.c_str(), margin_x, baseline,
+                            theme.main_text, theme.background);
+        }
+        if (!grammar.empty())
+        {
+            text::draw_text(dest_surface, font, grammar.c_str(),
+                            margin_x + avail - grammar_w, baseline,
+                            theme.secondary_text, theme.background);
         }
     }
 
@@ -1098,23 +1111,57 @@ void TokenView::ws_move_word(int dir)
 
 void TokenView::ws_move_line(int dir)
 {
-    if (ws_walk(dir))
+    // Exactly one line per press, always. Walking to the "nearest line with words" instead
+    // meant a press at the end of a paragraph crossed the blank separating it from the next
+    // and travelled two lines or more -- and in a book, where paragraphs are still separated
+    // by a blank line, that is most presses.
+    //
+    // So the page moves by one and the cursor is placed afterwards. The cursor must still
+    // land on a word, but that is a question of where it goes, not of how far the page went.
+    const int moved = scroll_reporting(dir);
+    if (moved == 0)
     {
-        auto spans = spans_at(state->line_scroller, state->ws_line);
-        // Keep the column roughly where it was rather than snapping to word 0.
-        state->ws_word = std::min(state->ws_word, (int)spans.size() - 1);
-        ws_recentre();
+        // The document cannot scroll further; walk the cursor within the page instead, so
+        // the last screen is still readable to its end.
+        if (ws_walk(dir))
+        {
+            auto spans = spans_at(state->line_scroller, state->ws_line);
+            state->ws_word = std::min(state->ws_word, std::max(0, (int)spans.size() - 1));
+        }
         return;
     }
 
-    // No word within a page in that direction -- a full-page illustration, or a plate
-    // section at the front of a book. Scroll anyway rather than doing nothing: without this
-    // such a book cannot be moved through at all, because every key the reader has is a
-    // cursor key and the cursor has nowhere to go.
-    if (scroll_reporting(dir * state->half_page()) != 0)
+    state->ws_line = ws_camera::cursor_after(state->ws_line, moved);
+    ws_place_near(ws_camera::target_line(state->num_text_display_lines()));
+    state->needs_render = true;
+}
+
+// Put the cursor on the nearest line to `row` that has words, searching outward so it lands
+// as close to where the eye already is as the page allows.
+void TokenView::ws_place_near(int row)
+{
+    const int n = state->num_text_display_lines();
+    for (int offset = 0; offset < n; ++offset)
     {
-        ws_seed();
-        state->needs_render = true;
+        for (int dir = -1; dir <= 1; dir += 2)
+        {
+            const int line = row + offset * dir;
+            if (line < 0 || line >= n)
+            {
+                continue;
+            }
+            auto spans = spans_at(state->line_scroller, line);
+            if (!spans.empty())
+            {
+                state->ws_line = line;
+                state->ws_word = std::min(state->ws_word, (int)spans.size() - 1);
+                return;
+            }
+            if (offset == 0)
+            {
+                break;  // row itself only needs checking once
+            }
+        }
     }
 }
 

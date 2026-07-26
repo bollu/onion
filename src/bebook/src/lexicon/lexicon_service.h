@@ -112,6 +112,20 @@ std::string describe_morphology(const std::string &pos, const std::string &featu
 // nothing worth abbreviating. Exposed for testing.
 std::string abbreviate_morphology(const std::string &pos, const std::string &features);
 
+// The tense and mood in full words -- "passato remoto", "congiuntivo imperfetto" -- for the
+// popup header, which has a whole line and so does not want the peek's shorthand. Empty when
+// the features name no tense (a noun, a bare headword).
+std::string tense_name_for_features(const std::string &features);
+
+// The indicative tense a surface form implies, as a ConjTable::tense key. "faccio"
+// ("pres+1+s") should open on the present rather than whatever sorts first. Falls back to
+// "presente" for infinitives, moods with no table, and anything unrecognised.
+//
+// Lives here rather than in the dictionary app because the reader's peek needs it too, and
+// reader/ must not depend on dict/ -- linking the book against the dictionary app's sources
+// to reach one pure function is the wrong direction.
+std::string tense_key_for_features(const std::string &features);
+
 // Which of the six persons a form is (index into PERSON_LABELS / ConjTable::forms), or -1
 // when it names none -- an infinitive, a participle, a noun.
 int person_index_for_features(const std::string &features);
