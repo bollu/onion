@@ -62,22 +62,16 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
         auto left_arrow = render_text("◂", style_hl);
         auto right_arrow = render_text("▸", style_hl);
 
-        auto theme_label = render_text("Theme:", style_label);
-        auto theme_value = render_text(
-            sys_styling.get_color_theme().c_str(),
-            line_selected == 0 ? style_hl : style_normal
-        );
-
         auto font_size_label = render_text("Font size:", style_label);
         auto font_size_value = render_text(
             std::to_string(sys_styling.get_font_size()).c_str(),
-            line_selected == 1 ? style_hl : style_normal
+            line_selected == 0 ? style_hl : style_normal
         );
 
         auto font_name_label = render_text("Font:", style_label);
         auto font_name_value = render_text(
             std::filesystem::path(sys_styling.get_font_name()).filename().stem().string().c_str(),
-            line_selected == 2 ? style_hl : style_normal,
+            line_selected == 1 ? style_hl : style_normal,
             user_font
         );
 
@@ -86,7 +80,7 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
             get_shoulder_keymap_display_name(
                 sys_styling.get_shoulder_keymap()
             ).c_str(),
-            line_selected == 3 ? style_hl : style_normal
+            line_selected == 2 ? style_hl : style_normal
         );
 
         auto progress_label = render_text("Progress:", style_label);
@@ -94,15 +88,13 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
             token_view_styling.get_progress_reporting() == ProgressReporting::CHAPTER_PERCENT ?
             "Chapter %" :
             "Book %",
-            line_selected == 4 ? style_hl : style_normal
+            line_selected == 3 ? style_hl : style_normal
         );
 
         Uint16 content_w;
         {
             int arrow_w = left_arrow->w + right_arrow->w;
             std::vector<int> widths {
-                theme_label->w,
-                theme_value->w + arrow_w,
                 font_size_label->w,
                 font_size_value->w + arrow_w,
                 font_name_label->w,
@@ -115,10 +107,10 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
             content_w = *std::max_element(widths.begin(), widths.end());
         }
 
-        int num_menu_items = 5;
+        int num_menu_items = 4;
         Uint16 text_padding = 5;
         Uint16 max_content_h = SCREEN_HEIGHT - DIALOG_BORDER_WIDTH * 2;
-        Uint16 line_height = theme_label->h + theme_value->h;
+        Uint16 line_height = font_size_label->h + font_size_value->h;
         int max_lines = std::max(1, (max_content_h + text_padding) / (line_height + text_padding));
         int num_lines_shown = std::min(num_menu_items, max_lines);
         {
@@ -178,36 +170,29 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
 
             if (is_line_shown(0))
             {
-                push_text(theme_label.get());
-                push_text(theme_value.get(), line_selected == 0);
+                push_text(font_size_label.get());
+                push_text(font_size_value.get(), line_selected == 0);
                 rect.y += text_padding;
             }
 
             if (is_line_shown(1))
             {
-                push_text(font_size_label.get());
-                push_text(font_size_value.get(), line_selected == 1);
+                push_text(font_name_label.get());
+                push_text(font_name_value.get(), line_selected == 1);
                 rect.y += text_padding;
             }
 
             if (is_line_shown(2))
             {
-                push_text(font_name_label.get());
-                push_text(font_name_value.get(), line_selected == 2);
+                push_text(shoulder_keymap_label.get());
+                push_text(shoulder_keymap_value.get(), line_selected == 2);
                 rect.y += text_padding;
             }
 
             if (is_line_shown(3))
             {
-                push_text(shoulder_keymap_label.get());
-                push_text(shoulder_keymap_value.get(), line_selected == 3);
-                rect.y += text_padding;
-            }
-
-            if (is_line_shown(4))
-            {
                 push_text(progress_label.get());
-                push_text(progress_value.get(), line_selected == 4);
+                push_text(progress_value.get(), line_selected == 3);
             }
         }
 
@@ -228,15 +213,6 @@ bool SettingsView::is_modal()
     return true;
 }
 
-void SettingsView::on_change_theme(int dir)
-{
-    std::string theme = sys_styling.get_color_theme();
-    sys_styling.set_color_theme(
-        (dir < 0) ?
-            get_prev_theme(theme) :
-            get_next_theme(theme)
-    );
-}
 
 void SettingsView::on_change_font_size(int dir)
 {
@@ -291,17 +267,13 @@ void SettingsView::on_keypress(SDLKey key)
                 int dir = (key == SW_BTN_LEFT) ? -1 : 1;
                 if (line_selected == 0)
                 {
-                    on_change_theme(dir);
+                    on_change_font_size(dir);
                 }
                 else if (line_selected == 1)
                 {
-                    on_change_font_size(dir);
-                }
-                else if (line_selected == 2)
-                {
                     on_change_font_name(dir);
                 }
-                else if (line_selected == 3)
+                else if (line_selected == 2)
                 {
                     on_change_shoulder_keymap(dir);
                 }

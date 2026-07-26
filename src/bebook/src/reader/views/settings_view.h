@@ -22,7 +22,6 @@ class SettingsView: public View
 
     int num_menu_items;
 
-    void on_change_theme(int dir);
     void on_change_font_size(int dir);
     void on_change_font_name(int dir);
     void on_change_shoulder_keymap(int dir);

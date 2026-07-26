@@ -43,9 +43,10 @@
 #define DEFAULT_JUSTIFY    true
 #define DEFAULT_HYPHENATE  true
 
-// Light by default in all three apps. Only affects a profile that has never picked a
-// theme: every app reads settings_get_color_theme(...).value_or(...), so a saved choice
-// always wins and an already-run install looks unchanged until it is set in Settings.
+// The theme, for all three apps. Not a default but the value: it is not settable, and the
+// apps no longer read or write a persisted one, so a theme saved by an older build cannot
+// bring a dark page back. The other themes remain in color_theme_def.cpp and are still
+// reachable from the sandbox renderers, which take a theme argument.
 #define DEFAULT_COLOR_THEME "light_contrast"
 
 #define CONFIG_FILE_PATH "bebook.cfg"

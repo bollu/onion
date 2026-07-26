@@ -171,11 +171,12 @@ int main(int argc, char **argv)
     SystemStyling sys_styling(
         init_font_name,
         init_font_size,
-        get_valid_theme(settings_get_color_theme(state_store).value_or(DEFAULT_COLOR_THEME)),
+        // Hardcoded, not read from settings: the theme is no longer toggleable, so a value
+        // persisted by an older build must not resurrect a dark page.
+        DEFAULT_COLOR_THEME,
         get_valid_shoulder_keymap(
             settings_get_shoulder_keymap(state_store).value_or(DEFAULT_SHOULDER_KEYMAP)));
     sys_styling.subscribe_to_changes([&state_store, &sys_styling](SystemStyling::ChangeId) {
-        settings_set_color_theme(state_store, sys_styling.get_color_theme());
         settings_set_font_name(state_store, sys_styling.get_font_name());
         settings_set_font_size(state_store, sys_styling.get_font_size());
         settings_set_shoulder_keymap(state_store, sys_styling.get_shoulder_keymap());

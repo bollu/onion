@@ -82,7 +82,9 @@ int main(int, char **)
 
     SystemStyling sys_styling(
         init_font_name, init_font_size,
-        get_valid_theme(settings_get_color_theme(state_store).value_or(DEFAULT_COLOR_THEME)),
+        // Hardcoded, not read from settings: the theme is no longer toggleable, so a value
+        // persisted by an older build must not resurrect a dark page.
+        DEFAULT_COLOR_THEME,
         get_valid_shoulder_keymap(
             settings_get_shoulder_keymap(state_store).value_or(DEFAULT_SHOULDER_KEYMAP)));
 
