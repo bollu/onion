@@ -24,7 +24,7 @@
 #include "util/debounced.h"
 #include "util/budget.h"
 #include "util/fps_limiter.h"
-#include "util/job_runner.h"
+#include "util/slice_runner.h"
 #include "util/held_key_tracker.h"
 #include "util/key_value_file.h"
 #include "util/math.h"
@@ -283,14 +283,14 @@ int main(int argc, char **argv)
     // Background work runs in the slack the frame limiter would otherwise sleep away, so the
     // frame rate is unchanged by construction: the deadline handed to the runner below is the
     // one limit_fps was already going to enforce.
-    JobRunner jobs;
+    SliceRunner jobs;
 
     auto install_on_change = [&]() {
         article_view->set_on_change(record_change);
 
         // Only the newest request survives: an answer for a word the cursor has left is of
         // no use, and dropping the old job releases its statement.
-        article_view->set_job_submitter([&jobs](std::unique_ptr<Job> job) {
+        article_view->set_job_submitter([&jobs](std::unique_ptr<SlicedJob> job) {
             jobs.clear();
             jobs.submit(std::move(job));
         });
@@ -540,8 +540,12 @@ int main(int argc, char **argv)
                     {
                         // MENU opens the GameSwitcher: request it and quit, letting runtime.sh
                         // launch the fullscreen switcher once we exit.
-                        request_game_switcher();
-                        quit = true;
+                        // Flush the reading position, then stop. Everything after this in a
+                        // normal exit -- the tile PNG encode above all -- is work the reader
+                        // waits through for no benefit, and the tile written on a debounce
+                        // while reading is already good enough.
+                        state_store.flush();
+                        quit_to_game_switcher();
                     }
                     else
                     {

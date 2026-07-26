@@ -1,6 +1,6 @@
-#include "util/job_runner.h"
+#include "util/slice_runner.h"
 
-void JobRunner::submit(std::unique_ptr<Job> job)
+void SliceRunner::submit(std::unique_ptr<SlicedJob> job)
 {
     if (job != nullptr)
     {
@@ -8,17 +8,17 @@ void JobRunner::submit(std::unique_ptr<Job> job)
     }
 }
 
-void JobRunner::clear()
+void SliceRunner::clear()
 {
     jobs.clear();
 }
 
-bool JobRunner::idle() const
+bool SliceRunner::idle() const
 {
     return jobs.empty();
 }
 
-void JobRunner::run(Budget budget)
+void SliceRunner::run(Budget budget)
 {
     while (!jobs.empty())
     {

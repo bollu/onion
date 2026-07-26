@@ -1,20 +1,20 @@
-#include "./task_queue.h"
+#include "./deferred_tasks.h"
 
-TaskQueue::TaskQueue()
+DeferredTasks::DeferredTasks()
 {
 }
 
-TaskQueue::~TaskQueue()
+DeferredTasks::~DeferredTasks()
 {
-    drain();
+    run_all();
 }
 
-void TaskQueue::submit(task_func task)
+void DeferredTasks::submit(deferred_task task)
 {
     queue.push(task);
 }
 
-bool TaskQueue::drain()
+bool DeferredTasks::run_all()
 {
     bool ran_task = false;
     while (!queue.empty())

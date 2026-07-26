@@ -53,7 +53,7 @@ struct ArticleViewState
     nav::Event queued_cause = nav::Event::LinkFollowed;
 
     std::function<void(const std::string &, DocAddr)> on_change;
-    std::function<void(std::unique_ptr<Job>)> submit_job;
+    std::function<void(std::unique_ptr<SlicedJob>)> submit_job;
     // Owned by main(), which holds the SettingsView singleton the stack expects.
     std::function<void()> on_open_settings;
 
@@ -524,7 +524,7 @@ void ArticleView::set_on_open_settings(std::function<void()> callback)
     state->on_open_settings = std::move(callback);
 }
 
-void ArticleView::set_job_submitter(std::function<void(std::unique_ptr<Job>)> callback)
+void ArticleView::set_job_submitter(std::function<void(std::unique_ptr<SlicedJob>)> callback)
 {
     state->submit_job = std::move(callback);
 }

@@ -11,7 +11,7 @@
 // produced by tools/build_lexicon.py). Answers the three questions the reader asks about
 // a selected word: what is it (form -> lemma + morphology), what does it mean (glosses),
 // and how does it conjugate (tables per tense).
-class Job;
+class SlicedJob;
 
 namespace lexicon
 {
@@ -93,7 +93,7 @@ public:
     // this run to completion, so the two cannot disagree about what a suggestion is. The
     // callback fires once, on the slice that finishes; a job dropped before then never calls
     // it and releases its statement in its destructor.
-    std::unique_ptr<Job> make_suggest_job(
+    std::unique_ptr<SlicedJob> make_suggest_job(
         const std::string &surface, int max_results,
         std::function<void(std::vector<Suggestion>)> on_done) const;
 

@@ -1,5 +1,5 @@
 #include "util/budget.h"
-#include "util/job_runner.h"
+#include "util/slice_runner.h"
 
 #include <gtest/gtest.h>
 
@@ -49,7 +49,7 @@ namespace
 {
 
 // Counts to `target`, one unit per step, recording how many slices it took.
-class Counter : public Job
+class Counter : public SlicedJob
 {
 public:
     Counter(int target, int *done_at) : target(target), done_at(done_at) {}
@@ -78,7 +78,7 @@ private:
 };
 
 // Reports whether it was destroyed, which is how a dropped job proves it cleans up.
-class Tracked : public Job
+class Tracked : public SlicedJob
 {
 public:
     explicit Tracked(bool *destroyed) : destroyed(destroyed) {}
@@ -91,11 +91,11 @@ private:
 
 }
 
-TEST(JobRunner, AJobSurvivesAcrossSlices)
+TEST(SliceRunner, AJobSurvivesAcrossSlices)
 {
     int done_at = 0;
-    JobRunner runner;
-    runner.submit(std::unique_ptr<Job>(new Counter(10, &done_at)));
+    SliceRunner runner;
+    runner.submit(std::unique_ptr<SlicedJob>(new Counter(10, &done_at)));
 
     // Four units at a time: the job must resume where it left off, not restart.
     runner.run(Budget::units(4));
@@ -108,44 +108,44 @@ TEST(JobRunner, AJobSurvivesAcrossSlices)
     EXPECT_EQ(done_at, 10);
 }
 
-TEST(JobRunner, OneUnitAtATimeReachesTheSameAnswer)
+TEST(SliceRunner, OneUnitAtATimeReachesTheSameAnswer)
 {
     // The property a hand-rolled state machine gets wrong: sliced and unsliced must agree.
     int sliced = 0;
-    JobRunner a;
-    a.submit(std::unique_ptr<Job>(new Counter(50, &sliced)));
+    SliceRunner a;
+    a.submit(std::unique_ptr<SlicedJob>(new Counter(50, &sliced)));
     for (int i = 0; i < 100 && !a.idle(); ++i)
     {
         a.run(Budget::units(1));
     }
 
     int whole = 0;
-    JobRunner b;
-    b.submit(std::unique_ptr<Job>(new Counter(50, &whole)));
+    SliceRunner b;
+    b.submit(std::unique_ptr<SlicedJob>(new Counter(50, &whole)));
     b.run(Budget::unlimited());
 
     EXPECT_TRUE(a.idle());
     EXPECT_EQ(sliced, whole);
 }
 
-TEST(JobRunner, JobsRunOldestFirst)
+TEST(SliceRunner, JobsRunOldestFirst)
 {
     int first = 0, second = 0;
-    JobRunner runner;
-    runner.submit(std::unique_ptr<Job>(new Counter(2, &first)));
-    runner.submit(std::unique_ptr<Job>(new Counter(2, &second)));
+    SliceRunner runner;
+    runner.submit(std::unique_ptr<SlicedJob>(new Counter(2, &first)));
+    runner.submit(std::unique_ptr<SlicedJob>(new Counter(2, &second)));
 
     runner.run(Budget::units(2));
     EXPECT_EQ(first, 2) << "the older job finishes before the newer one starts";
     EXPECT_EQ(second, 0);
 }
 
-TEST(JobRunner, ClearingDropsPendingJobs)
+TEST(SliceRunner, ClearingDropsPendingJobs)
 {
     // What happens when the cursor moves on: results nobody wants must not arrive late.
     bool destroyed = false;
-    JobRunner runner;
-    runner.submit(std::unique_ptr<Job>(new Tracked(&destroyed)));
+    SliceRunner runner;
+    runner.submit(std::unique_ptr<SlicedJob>(new Tracked(&destroyed)));
     runner.run(Budget::units(1));
     ASSERT_FALSE(destroyed);
 

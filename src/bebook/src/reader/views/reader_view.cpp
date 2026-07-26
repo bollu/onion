@@ -37,7 +37,7 @@ struct ReaderViewState
     // simply !ok() and lookups return empty, so a missing dictionary degrades to an empty
     // popup rather than a crash.
     lexicon::LexiconService lexicon;
-    std::function<void(std::unique_ptr<Job>)> submit_job;
+    std::function<void(std::unique_ptr<SlicedJob>)> submit_job;
 
     std::unique_ptr<TokenView> token_view;
 
@@ -274,7 +274,7 @@ void ReaderView::seek_to_address(DocAddr address)
     }
 }
 
-void ReaderView::set_job_submitter(std::function<void(std::unique_ptr<Job>)> callback)
+void ReaderView::set_job_submitter(std::function<void(std::unique_ptr<SlicedJob>)> callback)
 {
     state->submit_job = std::move(callback);
 }

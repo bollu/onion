@@ -17,14 +17,14 @@
 #include "sys/screen.h"
 #include "util/budget.h"
 #include "util/fps_limiter.h"
-#include "util/job_runner.h"
+#include "util/slice_runner.h"
 #include "util/held_key_tracker.h"
 #include "util/key_value_file.h"
 #include "util/math.h"
 #include "util/rom_screen.h"
 #include "util/screenshot.h"
 #include "util/sdl_font_cache.h"
-#include "util/task_queue.h"
+#include "util/deferred_tasks.h"
 #include "util/timer.h"
 
 #include <libxml/parser.h>
@@ -51,14 +51,15 @@ void initialize_views(
     StateStore &state_store,
     SystemStyling &sys_styling,
     TokenViewStyling &token_view_styling,
-    TaskQueue &task_queue,
+    DeferredTasks &task_queue,
+    SliceRunner &jobs,
     LibraryIndex &library,
     std::optional<std::filesystem::path> requested_book_path,
     // Owned by main(), which records it into the library at shutdown.
     OpenedBook &opened
 )
 {
-    auto load_book = [&view_stack, &state_store, &sys_styling, &token_view_styling, &task_queue, &library, &opened](std::filesystem::path path) {
+    auto load_book = [&view_stack, &state_store, &sys_styling, &token_view_styling, &task_queue, &jobs, &library, &opened](std::filesystem::path path) {
         // Say so on screen: with no shelf to fall back to, a bare return is a black flash.
         if (!std::filesystem::exists(path))
         {
@@ -83,8 +84,8 @@ void initialize_views(
                 token_view_styling,
                 view_stack,
                 state_store,
-                [&task_queue](task_func task){ task_queue.submit(task); },
-                [&jobs](std::unique_ptr<Job> job) { jobs.clear(); jobs.submit(std::move(job)); },
+                [&task_queue](deferred_task task){ task_queue.submit(task); },
+                [&jobs](std::unique_ptr<SlicedJob> job) { jobs.clear(); jobs.submit(std::move(job)); },
                 [&opened](int percent){ opened.progress_percent = percent; }
             )
         );
@@ -207,11 +208,11 @@ int main(int argc, char **argv)
     });
 
     // Setup views
-    TaskQueue task_queue;
+    DeferredTasks task_queue;
 
     // Interruptible background work, run in the slack the frame limiter would otherwise
     // sleep away, so the frame rate is unchanged by construction.
-    JobRunner jobs;
+    SliceRunner jobs;
     ViewStack view_stack;
 
     std::optional<std::filesystem::path> requested_book_path = (
@@ -230,6 +231,7 @@ int main(int argc, char **argv)
         sys_styling,
         token_view_styling,
         task_queue,
+        jobs,
         library,
         requested_book_path,
         opened
@@ -286,7 +288,7 @@ int main(int argc, char **argv)
         const uint32_t frame_start = SDL_GetTicks();
         if (screenshot_path && screenshot_frames_left-- == 0)
         {
-            task_queue.drain();  // let any async book load finish first
+            task_queue.run_all();  // let any async book load finish first
 
             // BEBOOK_SCREENSHOT_PAGES=N pages forward before capturing, so a page of
             // body text can be diffed rather than whatever the book opens on (usually
@@ -296,7 +298,7 @@ int main(int argc, char **argv)
                 for (int i = atoi(pages); i > 0; --i)
                 {
                     view_stack.on_keypress(SW_BTN_RIGHT);
-                    task_queue.drain();
+                    task_queue.run_all();
                 }
             }
 
@@ -336,7 +338,7 @@ int main(int argc, char **argv)
             }
         }
 
-        bool ran_user_code = task_queue.drain();
+        bool ran_user_code = task_queue.run_all();
 
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -368,8 +370,11 @@ int main(int argc, char **argv)
                             // MENU opens the GameSwitcher: request it and quit, letting
                             // runtime.sh launch the fullscreen switcher once we exit. (An app
                             // cannot overlay the switcher without fighting the framebuffer.)
-                            request_game_switcher();
-                            quit = true;
+                            // Flush the reading position, then stop. Everything a normal
+                            // exit does after this is work the reader waits through for no
+                            // benefit.
+                            state_store.flush();
+                            quit_to_game_switcher();
                         }
                         else
                         {

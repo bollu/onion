@@ -1,5 +1,5 @@
-#ifndef UTIL_JOB_H_
-#define UTIL_JOB_H_
+#ifndef UTIL_SLICED_JOB_H_
+#define UTIL_SLICED_JOB_H_
 
 #include "util/budget.h"
 
@@ -14,10 +14,10 @@
 // The rule that keeps it safe: a job must not hold anything across a yield that something
 // else could invalidate, and must release what it owns in its destructor. A job is dropped
 // the moment its result stops being wanted, mid-slice and without warning.
-class Job
+class SlicedJob
 {
 public:
-    virtual ~Job() = default;
+    virtual ~SlicedJob() = default;
 
     // Do work until `budget` is spent. Returns true when the job is finished and should be
     // dropped, false when it yielded and wants another slice. Implementations check the

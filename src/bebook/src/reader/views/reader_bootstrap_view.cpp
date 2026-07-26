@@ -20,7 +20,7 @@ struct ReaderBootstrapViewState
     ViewStack &view_stack;
     StateStore &state_store;
     std::function<void(int)> on_progress;
-    std::function<void(std::unique_ptr<Job>)> submit_job;
+    std::function<void(std::unique_ptr<SlicedJob>)> submit_job;
 
     bool is_done = false;
     bool needs_render = true;
@@ -31,7 +31,7 @@ struct ReaderBootstrapViewState
         TokenViewStyling &token_view_styling,
         ViewStack &view_stack,
         StateStore &state_store,
-        std::function<void(std::unique_ptr<Job>)> submit_job,
+        std::function<void(std::unique_ptr<SlicedJob>)> submit_job,
         std::function<void(int)> on_progress
     ) :
         book_path(book_path),
@@ -81,7 +81,7 @@ void ReaderBootstrapView::load_reader()
     if (state->submit_job)
     {
         auto submit = state->submit_job;
-        reader_view->set_job_submitter([submit](std::unique_ptr<Job> job) {
+        reader_view->set_job_submitter([submit](std::unique_ptr<SlicedJob> job) {
             submit(std::move(job));
         });
     }
@@ -105,7 +105,7 @@ ReaderBootstrapView::ReaderBootstrapView(
     ViewStack &view_stack,
     StateStore &state_store,
     std::function<void(std::function<void()>)> async,
-    std::function<void(std::unique_ptr<Job>)> submit_job,
+    std::function<void(std::unique_ptr<SlicedJob>)> submit_job,
     std::function<void(int)> on_progress
 ) : state(std::make_unique<ReaderBootstrapViewState>(book_path, sys_styling, token_view_styling, view_stack, state_store, std::move(submit_job), on_progress))
 {

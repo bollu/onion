@@ -2,7 +2,7 @@
 
 #include "util/budget.h"
 #include "util/edit_distance.h"
-#include "util/job.h"
+#include "util/sliced_job.h"
 
 #include <sqlite3.h>
 
@@ -304,7 +304,7 @@ namespace
 // in rowid order costs 0.2ms to the first row and spreads the rest a row at a time, which is
 // exactly what a budget can cut. The ordering was thrown away anyway: every candidate is
 // reranked by edit distance below.
-class SuggestJob : public Job
+class SuggestJob : public SlicedJob
 {
 public:
     SuggestJob(sqlite3 *db, const std::string &surface, int max_results,
@@ -480,11 +480,11 @@ private:
 
 }
 
-std::unique_ptr<Job> LexiconService::make_suggest_job(
+std::unique_ptr<SlicedJob> LexiconService::make_suggest_job(
     const std::string &surface, int max_results,
     std::function<void(std::vector<Suggestion>)> on_done) const
 {
-    return std::unique_ptr<Job>(
+    return std::unique_ptr<SlicedJob>(
         new SuggestJob(impl->db, surface, max_results, std::move(on_done)));
 }
 

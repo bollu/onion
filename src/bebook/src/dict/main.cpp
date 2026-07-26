@@ -149,8 +149,10 @@ int main(int, char **)
                 {
                     // MENU opens the GameSwitcher: request it and quit, letting runtime.sh
                     // launch the fullscreen switcher once we exit.
-                    request_game_switcher();
-                    quit = true;
+                    // Nothing here is worth a wait: the dictionary has no reading
+                    // position to lose.
+                    state_store.flush();
+                    quit_to_game_switcher();
                 }
                 else
                 {
