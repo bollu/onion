@@ -286,11 +286,16 @@ TEST(WikiHtmlParser, EmitsListItemsWithLinks)
     ASSERT_EQ(pieces[1].links[0].target, "Roma");
 }
 
-TEST(WikiHtmlParser, RecordsElementIdsForFragmentTargets)
+TEST(WikiHtmlParser, TrimsTrailingSpaceFromLinkRuns)
 {
-    const WikiArticle a = parse("<p>Intro.</p><h2 id=\"Storia\">Storia</h2><p>Testo.</p>");
+    // The separator compact_strings inserts between nodes must not be underlined, or the
+    // rule runs a space past the anchor text it marks.
+    const WikiArticle a = parse("<p><a href=\"Roma\">Roma</a> e il Lazio</p>");
+    const auto pieces = pieces_of(a);
 
-    ASSERT_EQ(a.id_to_addr.count("Storia"), 1u);
+    ASSERT_EQ(pieces.size(), 1u);
+    ASSERT_EQ(pieces[0].links.size(), 1u);
+    ASSERT_EQ(covered(pieces[0], 0), "Roma") << "no trailing space";
 }
 
 TEST(WikiHtmlParser, FallsBackToBodyWithoutAParserOutputWrapper)

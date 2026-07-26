@@ -65,8 +65,9 @@ std::string href_to_zim_path(const std::string &href)
         return {};
     }
 
-    // mwoffliner's own assets, never article content.
-    if (starts_with(href, "./_") || starts_with(href, "_mw_/") || starts_with(href, "_res_/"))
+    // mwoffliner's own assets, never article content. Tested before the leading "./" is
+    // stripped below, so "./_" is the form that actually occurs.
+    if (starts_with(href, "./_") || starts_with(href, "_"))
     {
         return {};
     }

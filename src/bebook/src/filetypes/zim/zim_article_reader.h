@@ -48,10 +48,6 @@ public:
     // built from tables, so the cleaner empties them; opening one shows a blank page.
     bool has_content() const;
 
-    // Canonicalises a link target found in this article, following redirects. Empty if
-    // the target is not in the archive, which is how a red link is detected.
-    std::string resolve_link(const std::string &target) const;
-
 private:
     std::shared_ptr<ZimFile> zim;
     std::shared_ptr<ArticleCache> cache;

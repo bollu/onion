@@ -45,21 +45,18 @@ TEST(NavHistory, CarriesTitleAndAddress)
     ASSERT_EQ(out.address, 4242u);
 }
 
-TEST(NavHistory, UpdateTopAddressTracksScrolling)
+TEST(NavHistory, PeekLeavesTheEntryInPlace)
 {
+    // Navigation peeks and pops only once the article has opened, so that a failed
+    // back-step costs a message rather than the entry.
     NavHistory history;
-    history.push(entry("Roma", 10));
-    history.update_top_address(500);
+    history.push(entry("Roma", 500));
 
-    ASSERT_EQ(history.pop().address, 500u)
-        << "going back should land where the reader actually was";
-}
+    ASSERT_EQ(history.peek().path, "Roma");
+    ASSERT_EQ(history.peek().address, 500u);
+    ASSERT_EQ(history.size(), 1u) << "peeking twice must not consume it";
 
-TEST(NavHistory, UpdateTopAddressOnAnEmptyHistoryIsSafe)
-{
-    NavHistory history;
-    history.update_top_address(99);
-
+    ASSERT_EQ(history.pop().path, "Roma");
     ASSERT_FALSE(history.can_go_back());
 }
 

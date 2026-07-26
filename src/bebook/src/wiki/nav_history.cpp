@@ -36,14 +36,6 @@ HistoryEntry NavHistory::pop()
     return entry;
 }
 
-void NavHistory::update_top_address(DocAddr address)
-{
-    if (!stack.empty())
-    {
-        stack.back().address = address;
-    }
-}
-
 size_t NavHistory::size() const
 {
     return stack.size();

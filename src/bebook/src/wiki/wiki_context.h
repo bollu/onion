@@ -22,14 +22,6 @@ public:
     // Null if the article is missing or unparseable.
     std::shared_ptr<zim::ZimArticleReader> open_article(const std::string &path);
 
-    // The archive's own landing page, or empty if it has none.
-    std::string main_page_path() const;
-
-    // Canonical path for a link target, empty when the target is not in the archive.
-    std::string resolve(const std::string &target) const;
-
-    const std::string &zim_path() const;
-
 private:
     std::shared_ptr<zim::ZimFile> zim;
     std::shared_ptr<zim::ArticleCache> cache;

@@ -15,7 +15,6 @@
 
 #include <cstring>
 #include <set>
-#include <unordered_map>
 
 namespace
 {
@@ -123,8 +122,6 @@ class WikiNodeProcessor
 
     DocAddr current_address;
     std::vector<Node> nodes;
-    std::set<std::string> unattached_ids;
-    std::unordered_map<std::string, DocAddr> &id_to_addr;
 
     text::Style current_style() const
     {
@@ -142,12 +139,6 @@ class WikiNodeProcessor
 
     void emit(Node::Type type, std::string text = "")
     {
-        for (const auto &id : unattached_ids)
-        {
-            id_to_addr[id] = current_address;
-        }
-        unattached_ids.clear();
-
         Node node;
         node.type = type;
         node.address = current_address;
@@ -160,8 +151,8 @@ class WikiNodeProcessor
     }
 
 public:
-    WikiNodeProcessor(DocAddr start, std::unordered_map<std::string, DocAddr> &id_to_addr)
-        : current_address(start), id_to_addr(id_to_addr)
+    explicit WikiNodeProcessor(DocAddr start)
+        : current_address(start)
     {
     }
 
@@ -197,11 +188,6 @@ public:
         if (zim::wiki_element_is_skipped(tag, klass, id))
         {
             return false;
-        }
-
-        if (!id.empty())
-        {
-            unattached_ids.insert(id);
         }
 
         if (BLOCKING_TAGS.count(tag) > 0)
@@ -330,6 +316,7 @@ std::vector<LinkRun> build_link_runs(const std::vector<Node> &nodes,
                                      uint32_t first,
                                      uint32_t group_size,
                                      const std::vector<uint32_t> &node_offsets,
+                                     const std::string &text,
                                      uint32_t text_size)
 {
     std::vector<LinkRun> runs;
@@ -360,8 +347,15 @@ std::vector<LinkRun> build_link_runs(const std::vector<Node> &nodes,
         }
     }
 
-    // Trailing whitespace inside a link should not be underlined or selectable as part
-    // of it; the joined text keeps single spaces between nodes.
+    // Trim the separator space compact_strings inserts between nodes, or an underline
+    // runs a space past the anchor text it marks.
+    for (auto &run : runs)
+    {
+        while (run.length > 0 && text[run.offset + run.length - 1] == ' ')
+        {
+            --run.length;
+        }
+    }
     return runs;
 }
 
@@ -430,7 +424,7 @@ void generate_tokens(const std::vector<Node> &nodes, zim::WikiArticle &out)
                 }
 
                 std::vector<LinkRun> link_runs =
-                    build_link_runs(nodes, i, group_size, node_offsets, text_size);
+                    build_link_runs(nodes, i, group_size, node_offsets, text, text_size);
 
                 if (head.type == Node::Type::InlineText)
                 {
@@ -589,7 +583,7 @@ bool parse_wiki_article(const char *html, const std::string &path, WikiArticle &
         }
     }
 
-    WikiNodeProcessor processor(make_address(0), out.id_to_addr);
+    WikiNodeProcessor processor(make_address(0));
     visit(content, processor);
     generate_tokens(processor.get_nodes(), out);
 

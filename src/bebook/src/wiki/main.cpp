@@ -402,8 +402,6 @@ int main(int argc, char **argv)
         }
     }
 
-    quit = view_stack.is_done();
-
 
     HeldKeyTracker held_key_tracker({
         SW_BTN_UP, SW_BTN_DOWN, SW_BTN_LEFT, SW_BTN_RIGHT,

@@ -35,9 +35,6 @@ public:
     // Removes and returns the most recent entry. Undefined unless can_go_back().
     HistoryEntry pop();
 
-    // Keeps the top entry's address current as the reader scrolls.
-    void update_top_address(DocAddr address);
-
     size_t size() const;
     void clear();
 

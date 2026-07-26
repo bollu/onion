@@ -118,20 +118,4 @@ bool ZimArticleReader::has_content() const
     return article != nullptr && !article->tokens.empty();
 }
 
-std::string ZimArticleReader::resolve_link(const std::string &target) const
-{
-    if (zim == nullptr || target.empty())
-    {
-        return {};
-    }
-
-    uint32_t index = 0;
-    ZimDirent dirent;
-    if (!zim->find_content(target, index, dirent))
-    {
-        return {};
-    }
-    return dirent.path;
-}
-
 }

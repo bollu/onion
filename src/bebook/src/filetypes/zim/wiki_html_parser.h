@@ -6,7 +6,6 @@
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace zim
@@ -24,8 +23,6 @@ struct WikiArticle
     // Section headings, parallel arrays: toc[i] is at toc_addrs[i].
     std::vector<TocItem> toc;
     std::vector<DocAddr> toc_addrs;
-
-    std::unordered_map<std::string, DocAddr> id_to_addr;
 
     uint32_t address_width = 0;
 };
