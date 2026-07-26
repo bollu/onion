@@ -27,19 +27,18 @@
 - [x] Paragraphs are indented rather than separated by a blank line, which was costing a
       whole line of an eleven-line screen per paragraph.
 
+- [x] Wiki article search on Y, from the article view or the reading list. A prefix walk
+      over the ZIM's sorted path list -- no index built, cheap enough per keystroke.
+- [x] Headings are bold, so sections are findable while scrolling past.
+- [x] Nouns show their gender as an article (`il cane`, `lo studente`, `l'isola`). The
+      gender was not in `forms.features` after all -- it is in kaikki's sense tags, which
+      the ingest dropped; a `noun_gender` table now carries it for 63,626 nouns.
+
 ## Open
 
-- [ ] **Wiki article search, on Y.** Y is free in the article view and the reading list.
-      The dictionary app's on-screen keyboard and its accent-folding search are the parts
-      to reuse; the ZIM's title index is what to search against.
-- [ ] **Wiki rendering still feels unstructured.** The paragraph indent helped, but
-      headings are only centred -- they do not read as headings. Worth giving them weight,
-      and considering whether the section hierarchy should show at all.
-- [ ] **Noun gender in the peek and the dictionary.** A noun reads `cane · sost.`, which
-      says nothing about gender -- the one thing a learner has to memorise per noun. Render
-      it with its definite article (`il cane`, `la cagna`). The gender is already in
-      `forms.features`; the work is choosing il/lo/la/l', which depends on the initial
-      letters as well as the gender.
 - [ ] **"Roma" peeks as a type of rice.** The city resolves to the lowercase noun `roma`,
       because lemmatize lowercases before matching and takes the first row. Proper nouns
       probably deserve to win when the surface is capitalised mid-sentence.
+- [ ] **Wiki section hierarchy.** Headings are bold now, but every level looks the same,
+      so a sub-section reads like a section. The TOC already records an indent level per
+      heading; nothing uses it while reading.
