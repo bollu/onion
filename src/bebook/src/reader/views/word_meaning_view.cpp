@@ -653,7 +653,20 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
             hint += "L/R sensi   ";
         }
         hint += "B indietro";
-        draw_prose(hint, nullptr, cx0, hint_y, cw, theme.secondary_text);
+        // Monospace and centred, matching the settings screen and the two keyboards: these
+        // are key bindings, not prose, and the fixed face is what makes them read as one
+        // system rather than as a sentence. A size down, because monospace is wider than
+        // the reading face at the same nominal size.
+        text::Font *hint_font = cached_load_font(
+            SYSTEM_FONT, std::max<uint32_t>(12, styling.get_font_size() * 3 / 4),
+            FontLoadErrorOpt::NoThrow);
+        if (hint_font == nullptr) { hint_font = font; }
+
+        const std::string shown = text::elide_to_width(hint_font, hint, cw);
+        int hw = 0;
+        text::text_size(hint_font, shown.c_str(), &hw, nullptr);
+        blit_line(dest, hint_font, shown, cx0 + (cw - hw) / 2, hint_y,
+                  theme.secondary_text, theme.background);
     }
 
     SDL_SetClipRect(dest, nullptr);

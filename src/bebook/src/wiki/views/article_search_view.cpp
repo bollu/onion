@@ -3,6 +3,7 @@
 #include "wiki/wiki_context.h"
 
 #include "reader/config.h"
+#include "util/sdl_font_cache.h"
 #include "reader/system_styling.h"
 
 #include "filetypes/zim/zim_file.h"
@@ -280,31 +281,60 @@ bool ArticleSearchView::render(SDL_Surface *dest, bool force_render)
     }
 
     // Keyboard, anchored to the bottom so it does not move as results come and go.
-    const int kb_rows = static_cast<int>(keyboard().size());
-    int ky = SCREEN_HEIGHT - kb_rows * line_h - 8;
+    // Monospace for the chrome, as the settings screen and the dictionary keyboard use:
+    // fixed advances line the keys into columns with no per-cell nudging, and the hint takes
+    // a smaller size because monospace is wider than the reading face at the same nominal
+    // one and the full key list would overrun.
+    text::Font *ui_font = cached_load_font(SYSTEM_FONT, impl->styling.get_font_size(),
+                                           FontLoadErrorOpt::NoThrow);
+    if (ui_font == nullptr) { ui_font = font; }
+    text::Font *hint_font = cached_load_font(
+        SYSTEM_FONT, std::max<uint32_t>(12, impl->styling.get_font_size() * 3 / 4),
+        FontLoadErrorOpt::NoThrow);
+    if (hint_font == nullptr) { hint_font = ui_font; }
 
-    blit(dest, font, "A scrivi   B canc.   L/R risultati   X apri   START esci",
-         cx0, ky - line_h - 4, theme.secondary_text, theme.background);
+    // Same cell geometry as the dictionary's keyboard: a row pitch of line_h alone left the
+    // rows touching, so a highlighted key bled into the row beneath it.
+    const int kb_rows = static_cast<int>(keyboard().size());
+    const int cell_w = (cx1 - cx0) / 10;
+    const int cell_h = line_h + 6;
+    const int kb_top = SCREEN_HEIGHT - 8 - kb_rows * cell_h;
+    const int kb_left = cx0 + (cx1 - cx0 - 10 * cell_w) / 2;
+
+    {
+        const std::string hint =
+            text::elide_to_width(hint_font,
+                                 "A scrivi  B canc.  L/R risultati  X apri  START esci",
+                                 cx1 - cx0);
+        int hw = 0;
+        text::text_size(hint_font, hint.c_str(), &hw, nullptr);
+        blit(dest, hint_font, hint, cx0 + (cx1 - cx0 - hw) / 2, kb_top - line_h,
+             theme.secondary_text, theme.background);
+    }
 
     for (int r = 0; r < kb_rows; ++r)
     {
         const std::string &row = keyboard()[r];
-        const int cell = (cx1 - cx0) / 10;
+        const int ky = kb_top + r * cell_h;
+        // Each row starts half a cell further in per key it lacks, so the rows stay centred
+        // on each other rather than all flush left.
+        const int row_left = kb_left + (10 - static_cast<int>(row.size())) * cell_w / 2;
         for (int c = 0; c < static_cast<int>(row.size()); ++c)
         {
             const bool sel = (r == impl->kb_row && c == impl->kb_col);
-            const int kx = cx0 + c * cell;
-            if (sel)
-            {
-                SDL_Rect cellr = { static_cast<Sint16>(kx - 4), static_cast<Sint16>(ky - 1),
-                                   static_cast<Uint16>(cell), static_cast<Uint16>(line_h + 2) };
-                SDL_FillRect(dest, &cellr, mapc(theme.highlight_background));
-            }
-            blit(dest, font, std::string(1, row[c]), kx, ky,
+            const int kx = row_left + c * cell_w;
+
+            SDL_Rect cell = { static_cast<Sint16>(kx + 1), static_cast<Sint16>(ky + 1),
+                              static_cast<Uint16>(cell_w - 2), static_cast<Uint16>(cell_h - 2) };
+            SDL_FillRect(dest, &cell, mapc(sel ? theme.highlight_background : theme.background));
+
+            const std::string label(1, row[c]);
+            int lw = 0;
+            text::text_size(ui_font, label.c_str(), &lw, nullptr);
+            blit(dest, ui_font, label, kx + (cell_w - lw) / 2, ky + 3,
                  sel ? theme.highlight_text : theme.main_text,
                  sel ? theme.highlight_background : theme.background);
         }
-        ky += line_h;
     }
 
     return true;

@@ -2,6 +2,7 @@
 
 #include "dict/match_detail.h"
 
+#include "reader/config.h"
 #include "reader/conj_layout.h"
 #include "reader/system_styling.h"
 #include "reader/view_stack.h"
@@ -147,7 +148,7 @@ void SearchView::rebuild_detail()
         conj_tables = lexicon.conjugations(lemma);
     }
     detail.person = lexicon::person_index_for_features(features);
-    detail.conj = dict::pick_table(conj_tables, dict::tense_key_for_features(features));
+    detail.conj = dict::pick_table(conj_tables, lexicon::tense_key_for_features(features));
 
     // "io faccio -> fare · Indicativo Presente": the form, what it belongs to, and which
     // table is on screen. For a verb the tense names itself, so describe_morphology would
@@ -330,11 +331,28 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
         y += 6;
     }
 
+    // The keyboard and the key hints are chrome, not prose, so they take the monospace face
+    // the settings screen uses: fixed advances line the keys into columns without any
+    // per-cell nudging, and the two screens then read as parts of one system.
+    text::Font *ui_font = cached_load_font(SYSTEM_FONT, styling.get_font_size(),
+                                           FontLoadErrorOpt::NoThrow);
+    if (ui_font == nullptr) { ui_font = font; }
+
+    // The hint line takes a smaller size than the keys. Monospace is wider than the reading
+    // face at the same nominal size, and the full key list overran the screen at body size.
+    text::Font *hint_font = cached_load_font(
+        SYSTEM_FONT, std::max<uint32_t>(12, styling.get_font_size() * 3 / 4),
+        FontLoadErrorOpt::NoThrow);
+    if (hint_font == nullptr) { hint_font = ui_font; }
+
     // --- Keyboard geometry (bottom) ---------------------------------------------------
     const auto &kb = keyboard();
     const int cell_w = (cx1 - cx0) / 10;
     const int cell_h = line_h + 6;
     const int kb_top = SCREEN_HEIGHT - MARGIN - static_cast<int>(kb.size()) * cell_h;
+    // Centred as a block: the rows are 10, 9 and 8 keys, and left-aligning them made the
+    // shorter rows look accidentally indented rather than deliberately placed.
+    const int kb_left = cx0 + (cx1 - cx0 - 10 * cell_w) / 2;
 
     // --- Match strip ------------------------------------------------------------------
     // All the candidates at once, active one pilled. L1/R1 cycle it; the panel below
@@ -473,11 +491,14 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
     // Only the keys that do something here: Y is absent whenever the modal would add
     // nothing to what is already on screen.
     {
-        std::string hint = "A scrivi   B canc.";
-        if (results.size() > 1) { hint += "   L/R voci"; }
-        if (detail.more)        { hint += "   Y dettagli"; }
-        hint += "   START esci";
-        blit(dest, font, hint, cx0, kb_top - line_h - 2,
+        std::string hint = "A scrivi  B canc.";
+        if (results.size() > 1) { hint += "  L/R voci"; }
+        if (detail.more)        { hint += "  Y dettagli"; }
+        hint += "  START esci";
+        const std::string shown = text::elide_to_width(hint_font, hint, cx1 - cx0);
+        int hw = 0;
+        text::text_size(hint_font, shown.c_str(), &hw, nullptr);
+        blit(dest, hint_font, shown, cx0 + (cx1 - cx0 - hw) / 2, kb_top - line_h,
              theme.secondary_text, theme.background);
     }
 
@@ -489,14 +510,17 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
         for (int c = 0; c < static_cast<int>(row.size()); ++c)
         {
             const std::string label(1, row[c]);
-            const int kx = cx0 + c * cell_w;
+            // Each row starts half a cell further in per key it lacks, so the rows stay
+            // centred on each other rather than all flush left.
+            const int row_left = kb_left + (10 - static_cast<int>(row.size())) * cell_w / 2;
+            const int kx = row_left + c * cell_w;
             const bool sel = (r == kb_row && c == kb_col);
             SDL_Rect cell = { static_cast<Sint16>(kx + 1), static_cast<Sint16>(ky + 1),
                               static_cast<Uint16>(cell_w - 2), static_cast<Uint16>(cell_h - 2) };
             SDL_FillRect(dest, &cell, mapc(sel ? theme.highlight_background : theme.background));
             int lw = 0;
-            text::text_size(font, label.c_str(), &lw, nullptr);
-            blit(dest, font, label, kx + (cell_w - lw) / 2, ky + 3,
+            text::text_size(ui_font, label.c_str(), &lw, nullptr);
+            blit(dest, ui_font, label, kx + (cell_w - lw) / 2, ky + 3,
                  sel ? theme.highlight_text : theme.main_text,
                  sel ? theme.highlight_background : theme.background);
         }

@@ -12,11 +12,8 @@
 namespace dict
 {
 
-// The indicative tense a surface form implies, as a key matching ConjTable::tense. A form
-// like "faccio" (features "pres+1+s") should open on the present, not on whatever tense
-// happens to sort first. Falls back to "presente" for infinitives, participles, moods with
-// no indicative table, and anything unrecognised.
-std::string tense_key_for_features(const std::string &features);
+// For the tense a form implies, use lexicon::tense_key_for_features -- the reader's peek
+// needs it too, and reader/ cannot depend on dict/.
 
 // For which person a form is, use lexicon::person_index_for_features -- this used to carry
 // its own copy, which the peek line then needed too.

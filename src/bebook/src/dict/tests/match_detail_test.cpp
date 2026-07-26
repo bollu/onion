@@ -4,48 +4,6 @@
 
 using namespace dict;
 
-TEST(TenseKeyForFeatures, IndicativeTensesMapToTheirTables)
-{
-    ASSERT_EQ(tense_key_for_features("pres+1+s"), "presente");
-    ASSERT_EQ(tense_key_for_features("impf+1+s"), "imperfetto");
-    ASSERT_EQ(tense_key_for_features("fut+3+p"), "futuro_semplice");
-    ASSERT_EQ(tense_key_for_features("cond+2+s"), "condizionale");
-}
-
-TEST(TenseKeyForFeatures, ThePassatoRemotoHasItsOwnTable)
-{
-    // Until the tense existed this fell through to the fallback, so "feci" opened on the
-    // present -- indistinguishable from an unrecognised code, which is why it went unseen.
-    ASSERT_EQ(tense_key_for_features("rem+1+s"), "passato_remoto");
-    ASSERT_EQ(tense_key_for_features("rem+3+p"), "passato_remoto");
-}
-
-TEST(TenseKeyForFeatures, AParticipleOpensOnTheCompoundTense)
-{
-    // Someone looking up "andato" is holding half of "sono andato".
-    ASSERT_EQ(tense_key_for_features("part"), "passato_prossimo");
-}
-
-TEST(TenseKeyForFeatures, MoodsWithoutATableFallBackToThePresent)
-{
-    // Only the indicative has tables, so a subjunctive form has no tense of its own to
-    // show. It must not resolve to "imperfetto" just because the token is in there.
-    ASSERT_EQ(tense_key_for_features("sub+impf+1+s"), "presente");
-    ASSERT_EQ(tense_key_for_features("sub+pres+3+p"), "presente");
-    ASSERT_EQ(tense_key_for_features("impr+2+s"), "presente");
-}
-
-TEST(TenseKeyForFeatures, NonFiniteAndUnknownFallBackToThePresent)
-{
-    ASSERT_EQ(tense_key_for_features("inf"), "presente");
-    ASSERT_EQ(tense_key_for_features("ger"), "presente");
-    ASSERT_EQ(tense_key_for_features("base"), "presente");
-    ASSERT_EQ(tense_key_for_features(""), "presente");
-    ASSERT_EQ(tense_key_for_features("nonsense+9"), "presente");
-}
-
-
-
 namespace
 {
 

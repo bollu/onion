@@ -40,27 +40,6 @@ bool has(const std::vector<std::string> &tokens, const char *want)
 namespace dict
 {
 
-std::string tense_key_for_features(const std::string &features)
-{
-    const std::vector<std::string> t = split_features(features);
-
-    // Only the indicative has tables here, so a subjunctive or imperative form has no
-    // tense of its own to show and falls back to the present.
-    if (has(t, "sub") || has(t, "impr"))
-    {
-        return "presente";
-    }
-
-    if (has(t, "impf")) { return "imperfetto"; }
-    if (has(t, "rem"))  { return "passato_remoto"; }
-    if (has(t, "fut"))  { return "futuro_semplice"; }
-    if (has(t, "cond")) { return "condizionale"; }
-
-    // A participle is the half of a compound tense the reader is most likely holding.
-    if (has(t, "part")) { return "passato_prossimo"; }
-
-    return "presente";
-}
 
 
 const lexicon::ConjTable *pick_table(

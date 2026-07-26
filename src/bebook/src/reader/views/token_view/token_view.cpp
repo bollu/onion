@@ -710,13 +710,20 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
     // the bright colour, what is true of the word on the right in the dim one -- position
     // and colour separate them, so neither needs punctuation between them.
     //
-    // No rule beneath it: the colour change and the paragraph indent below already mark the
-    // boundary, and a full-width line across a 640px screen is chrome charged against a very
-    // small display.
+    // A hairline rule along the bottom edge separates it from the page. Colour alone was not
+    // enough: the peek is prose in the same face as the text under it, so without a line the
+    // eye reads straight from the meaning into the article as though it were one paragraph.
     {
         SDL_Rect bar = {0, 0, (Uint16)SCREEN_WIDTH, (Uint16)line_height};
         SDL_FillRect(dest_surface, &bar,
             SDL_MapRGB(dest_surface->format, theme.background.r, theme.background.g, theme.background.b));
+
+        SDL_Rect peek_rule = {
+            0, static_cast<Sint16>(line_height - 1), (Uint16)SCREEN_WIDTH, 1
+        };
+        SDL_FillRect(dest_surface, &peek_rule,
+            SDL_MapRGB(dest_surface->format,
+                       theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b));
 
         const int baseline = leading_above + ascent;
         const int avail = state->text_width();
@@ -1227,6 +1234,29 @@ std::string TokenView::ws_selected_surface() const
     }
 
     std::string surface = tl->text.substr(sp.start, sp.end - sp.start);
+
+    // The continuation half: the cursor is on the first word of a line whose predecessor
+    // broke at a hyphen, so the word began there. Joining only forwards left this case
+    // resolving the tail on its own -- "teso" of "es-teso" looked up as a word in its own
+    // right -- and moving forwards through a page lands on the tail far more often than on
+    // the head.
+    if (sp.start == 0 && state->ws_line > 0)
+    {
+        const DisplayLine *prev = state->line_scroller.get_line_relative(state->ws_line - 1);
+        if (prev != nullptr && prev->type == DisplayLine::Type::Text)
+        {
+            const auto *prev_tl = static_cast<const TextLine *>(prev);
+            if (prev_tl->trailing_hyphen)
+            {
+                const auto prev_spans = tokenize_words(prev_tl->text);
+                if (!prev_spans.empty() && prev_spans.back().end == prev_tl->text.size())
+                {
+                    const auto &head = prev_spans.back();
+                    return prev_tl->text.substr(head.start, head.end - head.start) + surface;
+                }
+            }
+        }
+    }
 
     // Only the last word of a hyphenated line continues onto the next one.
     if (!tl->trailing_hyphen || sp.end != tl->text.size())
