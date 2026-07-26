@@ -154,6 +154,21 @@ bool write_tile_png(const SDL_Surface *surface, const std::string &key)
 
 } // namespace
 
+void remove_rom_screen(const std::string &rom_path)
+{
+    if (rom_path.empty())
+    {
+        return;
+    }
+
+    const std::filesystem::path out =
+        std::filesystem::path(ROM_SCREENS_DIR) /
+        (std::to_string(hash_rom_path(rom_path)) + ".png");
+
+    std::error_code ec;
+    std::filesystem::remove(out, ec);
+}
+
 bool write_rom_screen_plain(const SDL_Surface *surface, const std::string &rom_path)
 {
     if (surface == nullptr || rom_path.empty())

@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 
@@ -53,7 +54,56 @@ void signal_handler(int signal)
 
 const char *STORE_KEY_LAST_PATH = "wiki_last_path";
 const char *STORE_KEY_LAST_ADDRESS = "wiki_last_address";
-const char *STORE_KEY_READ_PREFIX = "wiki_read_";
+// One key holding every read path, tab separated, rather than one key per article.
+// Per-article keys grew without bound -- every link followed added a permanent line,
+// including articles not in the reading list -- and load_key_value splits on the first
+// '=', so a path containing one came back as a different key. Splitting on the first '='
+// is exactly why a single key is safe: the value keeps the rest of the line.
+const char *STORE_KEY_READ = "wiki_read";
+const char READ_SEPARATOR = '\t';
+
+std::set<std::string> load_read_paths(const StateStore &store)
+{
+    std::set<std::string> paths;
+    const auto packed = store.get_setting(STORE_KEY_READ);
+    if (!packed)
+    {
+        return paths;
+    }
+
+    std::string current;
+    for (char c : *packed)
+    {
+        if (c == READ_SEPARATOR)
+        {
+            if (!current.empty()) { paths.insert(current); }
+            current.clear();
+        }
+        else
+        {
+            current.push_back(c);
+        }
+    }
+    if (!current.empty()) { paths.insert(current); }
+    return paths;
+}
+
+void save_read_paths(StateStore &store, const std::set<std::string> &paths)
+{
+    std::string packed;
+    for (const auto &p : paths)
+    {
+        // A path containing the separator would reload as two entries. Percent-decoding
+        // can in principle produce one, so drop rather than corrupt the set.
+        if (p.find(READ_SEPARATOR) != std::string::npos || p.find('\n') != std::string::npos)
+        {
+            continue;
+        }
+        if (!packed.empty()) { packed.push_back(READ_SEPARATOR); }
+        packed += p;
+    }
+    store.set_setting(STORE_KEY_READ, packed);
+}
 
 std::unordered_map<std::string, std::string> load_config_with_defaults()
 {
@@ -189,6 +239,10 @@ int main(int argc, char **argv)
     // further down once the archive is known to have opened.
     std::shared_ptr<ReadingListView> list_view;
 
+    std::set<std::string> read_paths = load_read_paths(state_store);
+    // Bounds what is recorded: only what the list actually offers.
+    std::set<std::string> reading_list_paths;
+
     // One long-lived instance rather than one per visit: it is pushed and popped
     // repeatedly, so it terminates rather than finishing for good. Built here because the
     // article view may be created later, by the reading list, and needs to reach it.
@@ -200,13 +254,18 @@ int main(int argc, char **argv)
     auto record_change = [&](const std::string &path, DocAddr at) {
         state_store.set_setting(STORE_KEY_LAST_PATH, path);
         state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
-        state_store.set_setting(STORE_KEY_READ_PREFIX + path, "1");
-
-        // Push the mark through, or the list's ticks and counters stay as they were when
-        // the app started -- which is the only progress feedback the app offers.
-        if (list_view != nullptr)
+        // Only articles on the reading list. Following links used to write a permanent
+        // key per article visited, for articles the list does not even contain.
+        if (reading_list_paths.count(path) > 0 && read_paths.insert(path).second)
         {
-            list_view->set_read(path, true);
+            save_read_paths(state_store, read_paths);
+
+            // Push the mark through, or the list's ticks and counters stay as they were
+            // when the app started -- the only progress feedback the app offers.
+            if (list_view != nullptr)
+            {
+                list_view->set_read(path, true);
+            }
         }
 
         pending_tile_path = path;
@@ -261,6 +320,13 @@ int main(int argc, char **argv)
         // built from tables, which the cleaner correctly empties.
         std::vector<ReadingListSection> sections;
         load_reading_list(config[WIKI_CONFIG_KEY_READING_LIST], sections);
+        for (const auto &section : sections)
+        {
+            for (const auto &entry : section.entries)
+            {
+                reading_list_paths.insert(entry.path);
+            }
+        }
 
         if (!sections.empty())
         {
@@ -302,7 +368,7 @@ int main(int argc, char **argv)
             {
                 for (const auto &entry : section.entries)
                 {
-                    if (state_store.get_setting(STORE_KEY_READ_PREFIX + entry.path).has_value())
+                    if (read_paths.count(entry.path) > 0)
                     {
                         list_view->set_read(entry.path, true);
                     }

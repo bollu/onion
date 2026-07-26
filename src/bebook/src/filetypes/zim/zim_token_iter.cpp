@@ -1,5 +1,6 @@
 #include "./zim_token_iter.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace zim
@@ -50,19 +51,19 @@ void ZimTokenIter::seek(DocAddr address)
         return;
     }
 
-    // The last token at or before `address`, matching how the epub iterator seeks.
-    const uint32_t count = static_cast<uint32_t>(article->tokens.size());
-    for (uint32_t i = 0; i < count; ++i)
+    // The last token at or before `address`. Binary rather than linear: tokens are
+    // address-sorted by construction, and the scroller seeks on every page jump and every
+    // TOC selection, which on a large article walked thousands of tokens each time.
+    const auto &tokens = article->tokens;
+    const auto it = std::upper_bound(
+        tokens.begin(), tokens.end(), address,
+        [](DocAddr value, const std::unique_ptr<DocToken> &token) {
+            return value < token->address;
+        });
+
+    if (it != tokens.begin())
     {
-        const DocAddr at = article->tokens[i]->address;
-        if (at <= address)
-        {
-            index = i;
-        }
-        if (at >= address)
-        {
-            break;
-        }
+        index = static_cast<uint32_t>(std::distance(tokens.begin(), it) - 1);
     }
 }
 

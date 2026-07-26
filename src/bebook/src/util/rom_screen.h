@@ -17,4 +17,8 @@ bool write_rom_screen_plain(const SDL_Surface *surface, const std::string &rom_p
 // because it reads up to 8 bytes past the string.
 uint32_t hash_rom_path(const std::string &input);
 
+// Deletes the tile for `rom_path`, if any. Callers that write a tile per item need this:
+// nothing else on the device collects them.
+void remove_rom_screen(const std::string &rom_path);
+
 #endif

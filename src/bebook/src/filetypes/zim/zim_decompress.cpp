@@ -7,6 +7,10 @@ namespace
 
 const size_t CHUNK = 128 * 1024;
 
+// A ceiling on one decompressed cluster. zim-tools writes ~2MB; anything approaching this
+// is a corrupt or hostile archive, and unbounded growth on a 128MB device is fatal.
+const size_t MAX_CLUSTER_BYTES = 64 * 1024 * 1024;
+
 bool decompress_zstd(const char *in, size_t in_len, std::string &out)
 {
     ZSTD_DStream *stream = ZSTD_createDStream();
@@ -23,14 +27,25 @@ bool decompress_zstd(const char *in, size_t in_len, std::string &out)
 
     ZSTD_inBuffer input{in, in_len, 0};
     bool ok = true;
+    size_t rc = 1;   // non-zero: a frame is in progress
 
-    while (input.pos < input.size)
+    // Also while rc > 0: that means output is still buffered inside the stream, which
+    // happens whenever the chunk fills on the same call that drains the input. Stopping
+    // at input.pos == input.size alone silently truncated the cluster and still reported
+    // success, and the caller then blamed the blob offset table.
+    while (input.pos < input.size || rc > 0)
     {
         const size_t at = out.size();
+        if (at + CHUNK > MAX_CLUSTER_BYTES)
+        {
+            ok = false;
+            break;
+        }
         out.resize(at + CHUNK);
 
         ZSTD_outBuffer output{&out[0] + at, CHUNK, 0};
-        const size_t rc = ZSTD_decompressStream(stream, &output, &input);
+        const size_t prev_in = input.pos;
+        rc = ZSTD_decompressStream(stream, &output, &input);
         out.resize(at + output.pos);
 
         if (ZSTD_isError(rc))
@@ -40,18 +55,22 @@ bool decompress_zstd(const char *in, size_t in_len, std::string &out)
         }
 
         // A finished frame with input to spare means a second frame follows; keep going.
-        if (rc == 0 && output.pos == 0 && input.pos < input.size)
+        if (rc == 0 && input.pos < input.size)
         {
             if (ZSTD_isError(ZSTD_initDStream(stream)))
             {
                 ok = false;
                 break;
             }
+            rc = 1;
+            continue;
         }
 
-        // No progress at all means a truncated frame.
-        if (output.pos == 0 && rc != 0 && input.pos == input.size)
+        // Neither side moved: the frame is truncated. Report it rather than handing back
+        // a short cluster that looks valid.
+        if (output.pos == 0 && input.pos == prev_in)
         {
+            ok = rc == 0;
             break;
         }
     }

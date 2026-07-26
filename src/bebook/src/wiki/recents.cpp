@@ -2,7 +2,7 @@
 
 #include "util/rom_screen.h"
 
-#include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -63,20 +63,35 @@ std::string sanitize(const std::string &article_path)
     return out;
 }
 
+// Also removes the Game Switcher tile that went with each stub. Those are named by a hash
+// of the stub path in a different directory, so nothing else would ever collect them --
+// browsing 200 articles used to leave 200 orphaned 640x480 PNGs on the card.
 void remove_other_stubs(const std::string &keep)
 {
+    // Collected before deleting: removing entries while readdir is in flight is
+    // unspecified and can skip files. The iterator is also advanced explicitly, because
+    // range-for uses the throwing operator++ and a mid-scan failure would take the app
+    // down during a routine tile save.
+    std::vector<std::filesystem::path> stale;
     std::error_code ec;
-    for (const auto &entry : std::filesystem::directory_iterator(STUB_DIR, ec))
+
+    auto it = std::filesystem::directory_iterator(STUB_DIR, ec);
+    const auto end = std::filesystem::directory_iterator();
+    while (!ec && it != end)
     {
-        if (ec)
-        {
-            return;
-        }
-        const std::string path = entry.path().string();
+        const std::string path = it->path().string();
         if (path != keep && wiki_recents::is_stub_path(path))
         {
-            std::filesystem::remove(entry.path(), ec);
+            stale.push_back(it->path());
         }
+        it.increment(ec);
+    }
+
+    for (const auto &path : stale)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+        remove_rom_screen(path.string());
     }
 }
 

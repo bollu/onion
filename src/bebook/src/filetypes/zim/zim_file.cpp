@@ -128,6 +128,19 @@ bool ZimFile::read_header()
         return false;
     }
 
+    // The counts drive allocations of count * 8 bytes, so a corrupt entry_count of
+    // 0xFFFFFFFF would ask for 34GB. Each pointer list has to fit in the file it lives in.
+    if (static_cast<uint64_t>(hdr.entry_count) * 8 > file_size - hdr.path_ptr_pos)
+    {
+        error = "ZIM header claims more entries than the file can hold";
+        return false;
+    }
+    if (static_cast<uint64_t>(hdr.cluster_count) * 8 > file_size - hdr.cluster_ptr_pos)
+    {
+        error = "ZIM header claims more clusters than the file can hold";
+        return false;
+    }
+
     return true;
 }
 
@@ -391,6 +404,10 @@ std::shared_ptr<const ClusterData> ZimFile::load_cluster(uint32_t cluster) const
     {
         end = hdr.checksum_pos;
     }
+
+    // `end` comes from the next cluster pointer, which is unvalidated file data: clamp it
+    // rather than letting end - start ask for a read past the end of the archive.
+    end = std::min(end, src->size());
 
     if (end <= start || start >= src->size())
     {

@@ -505,6 +505,52 @@ TEST(ZimFile, EmptyArchiveIsSafe)
     ASSERT_FALSE(z->read_blob(0, 0, out));
 }
 
+TEST(ZimFile, RejectsAnEntryCountLargerThanTheFile)
+{
+    // The count drives an allocation of count * 8, so an unchecked 0xFFFFFFFF asks for
+    // 34GB and terminates rather than reporting a bad file.
+    std::string bytes = build_zim(standard_dirents(), standard_clusters());
+    bytes[24] = static_cast<char>(0xFF);
+    bytes[25] = static_cast<char>(0xFF);
+    bytes[26] = static_cast<char>(0xFF);
+    bytes[27] = static_cast<char>(0xFF);
+
+    auto z = open_zim(bytes);
+    ASSERT_FALSE(z->is_open());
+    ASSERT_FALSE(z->last_error().empty());
+}
+
+TEST(ZimFile, RejectsAClusterCountLargerThanTheFile)
+{
+    std::string bytes = build_zim(standard_dirents(), standard_clusters());
+    bytes[28] = static_cast<char>(0xFF);
+    bytes[29] = static_cast<char>(0xFF);
+    bytes[30] = static_cast<char>(0xFF);
+    bytes[31] = static_cast<char>(0xFF);
+
+    auto z = open_zim(bytes);
+    ASSERT_FALSE(z->is_open());
+    ASSERT_FALSE(z->last_error().empty());
+}
+
+TEST(ZimFile, ReportsATruncatedZstdFrameRatherThanAShortCluster)
+{
+    // Dropping the frame's tail: decompression must fail rather than hand back a short
+    // cluster, which the caller would then blame on a bad offset table.
+    std::vector<ClusterSpec> clusters = standard_clusters();
+    ClusterSpec cut;
+    cut.info = 0x05;
+    cut.raw_body.assign(reinterpret_cast<const char *>(ZSTD_CLUSTER_BODY),
+                        sizeof(ZSTD_CLUSTER_BODY) - 12);
+    clusters.push_back(cut);
+
+    auto z = open_zim(build_zim(standard_dirents(), clusters));
+    ASSERT_TRUE(z->is_open()) << z->last_error();
+
+    std::string out;
+    ASSERT_FALSE(z->read_blob(2, 0, out)) << "a truncated frame must not look like success";
+}
+
 TEST(ZimFile, TruncatedFileDoesNotCrash)
 {
     const std::string bytes = build_zim(standard_dirents(), standard_clusters());

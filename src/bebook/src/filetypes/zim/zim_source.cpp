@@ -1,3 +1,9 @@
+// Before any header, so off_t is 64-bit on a 32-bit target and fseeko can reach
+// past 2GB in the full-Wikipedia archives.
+#ifndef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+#endif
+
 #include "./zim_source.h"
 
 #include <cstring>
@@ -8,6 +14,15 @@ namespace zim
 
 bool ZimSource::read_string(std::string &dst, uint64_t len, uint64_t offset) const
 {
+    // Bounds-checked before resizing, not after: len comes from header fields that a
+    // corrupt or truncated archive can set to anything, and resize() would then try to
+    // allocate tens of GB and terminate rather than report a bad file.
+    const uint64_t total = size();
+    if (offset > total || len > total - offset || len > dst.max_size())
+    {
+        return false;
+    }
+
     dst.resize(static_cast<size_t>(len));
     if (len == 0)
     {
@@ -25,14 +40,17 @@ FileZimSource::FileZimSource(const std::string &path)
         return;
     }
 
-    if (std::fseek(fp, 0, SEEK_END) != 0)
+    // fseeko/ftello rather than fseek/ftell: long is 32 bits on the device, so anything
+    // past 2GB would wrap and silently seek to the wrong place. top_mini is 112MB, but
+    // the full-Wikipedia archives are 2.4GB and up.
+    if (fseeko(fp, 0, SEEK_END) != 0)
     {
         std::fclose(fp);
         fp = nullptr;
         return;
     }
 
-    const long end = std::ftell(fp);
+    const off_t end = ftello(fp);
     if (end < 0)
     {
         std::fclose(fp);
@@ -66,7 +84,7 @@ bool FileZimSource::read(void *dst, uint64_t len, uint64_t offset) const
         return true;
     }
 
-    if (std::fseek(fp, static_cast<long>(offset), SEEK_SET) != 0)
+    if (fseeko(fp, static_cast<off_t>(offset), SEEK_SET) != 0)
     {
         return false;
     }
