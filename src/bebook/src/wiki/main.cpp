@@ -185,6 +185,10 @@ int main(int argc, char **argv)
     std::string pending_tile_title;
     DocAddr pending_tile_address = 0;
 
+    // Declared up here because record_change reports read marks to it, and it is built
+    // further down once the archive is known to have opened.
+    std::shared_ptr<ReadingListView> list_view;
+
     // One long-lived instance rather than one per visit: it is pushed and popped
     // repeatedly, so it terminates rather than finishing for good. Built here because the
     // article view may be created later, by the reading list, and needs to reach it.
@@ -197,6 +201,13 @@ int main(int argc, char **argv)
         state_store.set_setting(STORE_KEY_LAST_PATH, path);
         state_store.set_setting(STORE_KEY_LAST_ADDRESS, std::to_string(at));
         state_store.set_setting(STORE_KEY_READ_PREFIX + path, "1");
+
+        // Push the mark through, or the list's ticks and counters stay as they were when
+        // the app started -- which is the only progress feedback the app offers.
+        if (list_view != nullptr)
+        {
+            list_view->set_read(path, true);
+        }
 
         pending_tile_path = path;
         pending_tile_title = article_view->current_title();
@@ -251,7 +262,6 @@ int main(int argc, char **argv)
         std::vector<ReadingListSection> sections;
         load_reading_list(config[WIKI_CONFIG_KEY_READING_LIST], sections);
 
-        std::shared_ptr<ReadingListView> list_view;
         if (!sections.empty())
         {
             list_view = std::make_shared<ReadingListView>(

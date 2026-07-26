@@ -17,6 +17,9 @@ class SelectionMenu: public View
     bool needs_render = true;
 
     std::vector<std::string> entries;
+    // Optional. When set, a header row shows it plus the cursor position, and the list
+    // loses one row to make space. Menus that set no title lay out exactly as before.
+    std::string title;
     uint32_t cursor_pos = 0;
     uint32_t scroll_pos = 0;
     bool close_on_select = false;
@@ -47,6 +50,11 @@ public:
     virtual ~SelectionMenu();
 
     void set_entries(std::vector<std::string> new_entries);
+
+    // Names the list and shows the cursor position. Without one, several full-screen
+    // menus are indistinguishable, and nothing says how far the list runs or whether B
+    // goes back a level or leaves.
+    void set_title(const std::string &title);
     void set_on_selection(std::function<void(uint32_t)> callback);
     void set_on_focus(std::function<void(uint32_t)> callback);
     // Define fallback keypress handler
@@ -55,6 +63,7 @@ public:
 
     void set_cursor_pos(const std::string &entry);
     void set_cursor_pos(uint32_t pos);
+    uint32_t get_cursor_pos() const;
 
     void close();
 

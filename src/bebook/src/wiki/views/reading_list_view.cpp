@@ -6,6 +6,7 @@
 
 #include "sys/keymap.h"
 
+#include <map>
 #include <set>
 #include <utility>
 
@@ -28,7 +29,10 @@ struct ReadingListViewState
 
     // The section menu is this view's own body; article menus are pushed above it.
     std::shared_ptr<SelectionMenu> menu;
+    std::shared_ptr<SelectionMenu> section_menu;
     uint32_t section_cursor = 0;
+    // Where the cursor sat in each section's article list, so returning resumes there.
+    std::map<uint32_t, uint32_t> entry_cursor;
 
     bool is_done = false;
 
@@ -89,6 +93,19 @@ void ReadingListView::show_sections()
         state->menu->set_entries(names);
     }
 
+    uint32_t read = 0;
+    for (const auto &section : state->sections)
+    {
+        for (const auto &entry : section.entries)
+        {
+            if (state->read_paths.count(entry.path) > 0)
+            {
+                ++read;
+            }
+        }
+    }
+    state->menu->set_title("Letture  " + std::to_string(read) + " lette");
+
     state->menu->set_cursor_pos(state->section_cursor);
 }
 
@@ -110,15 +127,28 @@ void ReadingListView::show_section(uint32_t index)
     }
 
     auto menu = std::make_shared<SelectionMenu>(names, state->styling);
+    menu->set_title(section.name);
     menu->set_on_selection([this, index](uint32_t entry_index) {
+        state->entry_cursor[index] = entry_index;
         const auto &entries = state->sections[index].entries;
         if (entry_index < entries.size() && state->on_open)
         {
             state->on_open(entries[entry_index].path);
         }
     });
-    menu->set_close_on_select();
 
+    // Return to the entry last opened rather than to the top: finishing article 18 of 22
+    // and coming back otherwise means seventeen presses to resume where you were.
+    const auto remembered = state->entry_cursor.find(index);
+    if (remembered != state->entry_cursor.end() && remembered->second < names.size())
+    {
+        menu->set_cursor_pos(remembered->second);
+    }
+
+    // Deliberately not close_on_select: a menu that finishes while the article view is
+    // pushed above it is stranded mid-stack, and both pop together when the article
+    // exits -- which drops the reader two levels instead of one.
+    state->section_menu = menu;
     state->view_stack.push(menu);
 }
 
@@ -166,12 +196,38 @@ void ReadingListView::on_keyheld(SDLKey key, uint32_t held_time_ms)
 
 void ReadingListView::set_read(const std::string &path, bool read)
 {
-    if (read)
+    const bool changed = read ? state->read_paths.insert(path).second
+                              : state->read_paths.erase(path) > 0;
+    if (!changed)
     {
-        state->read_paths.insert(path);
+        return;
     }
-    else
+
+    // Pushed rather than pulled: coming back from an article, the section menu is on top,
+    // so this view never regains focus and would never rebuild. The counters ticking up
+    // are the only progress feedback the app has -- they were frozen for whole sessions.
+    show_sections();
+    refresh_section_menu();
+}
+
+void ReadingListView::refresh_section_menu()
+{
+    if (state->section_menu == nullptr || state->section_cursor >= state->sections.size())
     {
-        state->read_paths.erase(path);
+        return;
     }
+
+    const auto &section = state->sections[state->section_cursor];
+    const uint32_t cursor = state->section_menu->get_cursor_pos();
+
+    std::vector<std::string> names;
+    names.reserve(section.entries.size());
+    for (const auto &entry : section.entries)
+    {
+        const bool read = state->read_paths.count(entry.path) > 0;
+        names.push_back(std::string(read ? READ_MARK : UNREAD_MARK) + entry.title);
+    }
+
+    state->section_menu->set_entries(names);
+    state->section_menu->set_cursor_pos(cursor);
 }

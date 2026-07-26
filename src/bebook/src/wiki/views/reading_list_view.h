@@ -41,6 +41,7 @@ private:
 
     void show_sections();
     void show_section(uint32_t index);
+    void refresh_section_menu();
 };
 
 #endif

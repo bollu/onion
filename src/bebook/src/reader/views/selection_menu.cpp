@@ -9,12 +9,16 @@
 
 uint32_t SelectionMenu::num_display_lines() const
 {
-    return SCREEN_HEIGHT / line_height;
+    const uint32_t lines = SCREEN_HEIGHT / line_height;
+    // The header costs a row. Only when there is one, so menus without a title are
+    // laid out exactly as before.
+    return title.empty() ? lines : (lines > 1 ? lines - 1 : lines);
 }
 
 uint32_t SelectionMenu::excess_pxl_y() const
 {
-    return SCREEN_HEIGHT - num_display_lines() * line_height;
+    const uint32_t rows = title.empty() ? num_display_lines() : num_display_lines() + 1;
+    return SCREEN_HEIGHT - rows * line_height;
 }
 
 SelectionMenu::SelectionMenu(SystemStyling &styling)
@@ -57,6 +61,18 @@ void SelectionMenu::set_entries(std::vector<std::string> new_entries)
     needs_render = true;
 }
 
+void SelectionMenu::set_title(const std::string &new_title)
+{
+    if (new_title != title)
+    {
+        title = new_title;
+        // The header takes a row, so the visible window shrinks: re-clamp the scroll
+        // position rather than leaving the cursor off-screen.
+        set_cursor_pos(cursor_pos);
+        needs_render = true;
+    }
+}
+
 void SelectionMenu::set_on_selection(std::function<void(uint32_t)> callback)
 {
     on_selection = callback;
@@ -87,6 +103,11 @@ void SelectionMenu::set_cursor_pos(const std::string &entry)
             break;
         }
     }
+}
+
+uint32_t SelectionMenu::get_cursor_pos() const
+{
+    return cursor_pos;
 }
 
 void SelectionMenu::set_cursor_pos(uint32_t new_cursor_pos)
@@ -148,6 +169,36 @@ bool SelectionMenu::render(SDL_Surface *dest_surface, bool force_render)
     SDL_Rect rect = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
     SDL_FillRect(dest_surface, &rect, rect_bg_color);
 
+    // Header: what this list is, and where in it the cursor sits. Drawn in the secondary
+    // colour so it reads as chrome rather than as a selectable row.
+    if (!title.empty())
+    {
+        const SDL_Color &dim = theme.secondary_text;
+
+        auto heading = surface_unique_ptr { text::render_text_shaded(
+            loaded_font, title.c_str(), dim, bg_color) };
+        SDL_Rect at = {x, static_cast<Sint16>(y + line_padding / 2), 0, 0};
+        SDL_BlitSurface(heading.get(), NULL, dest_surface, &at);
+
+        if (!entries.empty())
+        {
+            const std::string pos = std::to_string(cursor_pos + 1) + "/" +
+                                    std::to_string(entries.size());
+            int pos_w = 0;
+            text::text_size(loaded_font, pos.c_str(), &pos_w, nullptr);
+
+            auto counter = surface_unique_ptr { text::render_text_shaded(
+                loaded_font, pos.c_str(), dim, bg_color) };
+            SDL_Rect counter_at = {
+                static_cast<Sint16>(SCREEN_WIDTH - pos_w - line_padding),
+                static_cast<Sint16>(y + line_padding / 2), 0, 0
+            };
+            SDL_BlitSurface(counter.get(), NULL, dest_surface, &counter_at);
+        }
+
+        y += line_height;
+    }
+
     // Draw lines
     uint32_t num_lines = num_display_lines();
     for (uint32_t i = 0; i < num_lines; ++i)
@@ -198,7 +249,9 @@ bool SelectionMenu::is_done()
 
 void SelectionMenu::on_move_down(uint32_t step)
 {
-    if (cursor_pos < entries.size() - 1)
+    // entries.size() is unsigned, so an empty menu would compare against SIZE_MAX and
+    // scroll the cursor into nothing.
+    if (!entries.empty() && cursor_pos < entries.size() - 1)
     {
         cursor_pos = std::min(
             cursor_pos + step,
