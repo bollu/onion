@@ -411,7 +411,22 @@ launch_game() {
 
             # GAME LAUNCH
             cd /mnt/SDCARD/RetroArch
-            force_retroarch_cfg
+
+            # Only games pay for RetroArch's config. Patching it means reading a 3110-line,
+            # 104 KB retroarch.cfg into a shell variable, running sed across the whole thing
+            # and writing all of it back to the SD card -- and it ran for every launch,
+            # including apps that never touch RetroArch (BeWiki, BeDict, BeBook), right at
+            # the moment the screen is black. It also dirtied 104 KB of pages, which is what
+            # makes the sync() a few lines up expensive.
+            #
+            # Guarded on is_game rather than on "retroarch" appearing in $cmd: a game's
+            # command names its emulator's launch.sh and its rom, neither of which contains
+            # the word, so testing $cmd would have quietly stopped patching the config for
+            # the very launches that need it. is_game is the same condition line 361 uses
+            # before it looks at RetroArch cores at all.
+            if [ $is_game -eq 1 ]; then
+                force_retroarch_cfg
+            fi
 
             # make the cmd_to_run shell env aware of the new timezone
             TZ="$TZ_VALUE" $sysdir/cmd_to_run.sh
