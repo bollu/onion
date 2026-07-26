@@ -2,6 +2,7 @@
 
 #include "dict/match_detail.h"
 
+#include "reader/conj_layout.h"
 #include "reader/system_styling.h"
 #include "reader/view_stack.h"
 #include "reader/views/word_meaning_view.h"
@@ -412,29 +413,25 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
                 text::text_size(font, label, &w, nullptr);
                 pron_w = std::max(pron_w, w);
             }
-            int form_w = 0;
-            for (const auto &f : detail.conj->forms)
+            int widest_sing = 0;
+            int widest_plur = 0;
+            for (int i = 0; i < 3; ++i)
             {
                 int w = 0;
-                text::text_size(font, f.c_str(), &w, nullptr);
-                form_w = std::max(form_w, w);
+                text::text_size(font, detail.conj->forms[i].c_str(), &w, nullptr);
+                widest_sing = std::max(widest_sing, w);
+                text::text_size(font, detail.conj->forms[i + 3].c_str(), &w, nullptr);
+                widest_plur = std::max(widest_plur, w);
             }
             const int pron_col = pron_w + 12;
-            const int avail = cx1 - cx0;
 
-            // Pack the plural column right after the widest singular form while that still
-            // leaves the plural form its full width; otherwise split the panel evenly and
-            // elide. Clamping the column on its own -- what this did before -- ran the
-            // singular form into the plural pronoun and clipped the plural form mid-word at
-            // the right edge, which is how passato prossimo rendered. There is no room here
-            // to fall back to six rows as the full view does, so the compact panel elides
-            // and Y opens the untruncated table.
-            int col2 = pron_col + form_w + 28;
-            if (col2 + pron_col + form_w > avail)
-            {
-                col2 = avail / 2;
-            }
-            const int cell_w = std::min(col2 - pron_col - 12, avail - col2 - pron_col);
+            // Shared with the reader's meaning popup; see reader/conj_layout.h. This panel
+            // has no vertical room to fall back to six rows as the popup does, so when two
+            // columns do not fit it still draws two -- at the even split conj::columns
+            // returns -- and elides to cell_w. Y opens the untruncated table.
+            const conj::Columns cols =
+                conj::columns(pron_col, widest_sing, widest_plur, 28, cx1 - cx0);
+            const int col2 = cols.plural_col;
 
             // Singular beside its plural: three rows for six persons.
             for (int i = 0; i < 3; ++i)
@@ -447,6 +444,9 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
                     // it. A fill rather than a text colour, because highlight_text equals
                     // main_text on some themes and would mark nothing at all.
                     const bool is_match = (idx == detail.person);
+                    // Each column against its own width: the plural cell is the wider one,
+                    // and sharing a single minimum elided "facciamo" though it fit.
+                    const int cell_w = half == 0 ? cols.singular_cell_w : cols.plural_cell_w;
                     const std::string form =
                         text::elide_to_width(font, detail.conj->forms[idx], cell_w);
                     int fw = 0;

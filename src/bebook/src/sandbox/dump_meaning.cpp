@@ -1,6 +1,6 @@
 // Renders the dictionary popup (WordMeaningView) to a PNG so its look can be judged by eye.
 //
-// Run:  ./build/<platform>/sandbox meaning facevo out.png [tab_index]
+// Run:  ./build/<platform>/sandbox meaning facevo out.png [tab_index] [theme]
 //
 // Draws over a neutral grey "page" so the modal's dimming mask reads realistically.
 
@@ -19,7 +19,8 @@
 #include <iostream>
 #include <string>
 
-void dump_meaning(const std::string &word, const std::string &out_path, int tab_index)
+void dump_meaning(const std::string &word, const std::string &out_path, int tab_index,
+                  const std::string &theme)
 {
     SDL_Surface *surface = SDL_CreateRGBSurface(
         SDL_SWSURFACE, SCREEN_WIDTH, SCREEN_HEIGHT, 32,
@@ -28,6 +29,10 @@ void dump_meaning(const std::string &word, const std::string &out_path, int tab_
     SDL_FillRect(surface, nullptr, SDL_MapRGB(surface->format, 42, 42, 50));  // stand-in page
 
     SystemStyling styling(DEFAULT_FONT_NAME, DEFAULT_FONT_SIZE, DEFAULT_COLOR_THEME, DEFAULT_SHOULDER_KEYMAP);
+    if (!theme.empty())
+    {
+        styling.set_color_theme(theme);
+    }
     lexicon::LexiconService lex(LEXICON_DB_PATH);
     if (!lex.ok())
     {

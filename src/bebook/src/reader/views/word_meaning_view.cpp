@@ -1,6 +1,7 @@
 #include "./word_meaning_view.h"
 
 #include "reader/config.h"
+#include "reader/conj_layout.h"
 #include "reader/draw_modal_border.h"
 #include "reader/system_styling.h"
 
@@ -170,34 +171,41 @@ void WordMeaningView::rebuild_tabs()
     }
 }
 
-std::vector<WordMeaningView::BodyItem> WordMeaningView::body_items() const
+const lexicon::ConjTable *WordMeaningView::body_conj_table() const
 {
-    using Kind = BodyItem::Kind;
-    std::vector<BodyItem> out;
+    if (active_analysis < 0 || tabs.empty() || tabs[active_tab].kind != TabKind::Conj)
+    {
+        return nullptr;
+    }
+    return &analyses[active_analysis].conj[tabs[active_tab].conj_index];
+}
+
+std::vector<std::string> WordMeaningView::body_paragraphs() const
+{
+    std::vector<std::string> out;
     if (active_analysis < 0 || tabs.empty())
     {
-        out.push_back({ Kind::Prose, "Nessuna voce.", "" });
+        out.push_back("Nessuna voce.");
         return out;
     }
 
     const Analysis &a = analyses[active_analysis];
-    const Tab &tab = tabs[active_tab];
 
     auto add_senses = [&out](const std::vector<lexicon::Sense> &senses, const char *empty_msg) {
         if (senses.empty())
         {
-            out.push_back({ Kind::Prose, empty_msg, "" });
+            out.push_back(empty_msg);
             return;
         }
         int n = 1;
         for (const auto &s : senses)
         {
             // No blank between senses: glosses render on consecutive lines for a denser list.
-            out.push_back({ Kind::Prose, std::to_string(n++) + ".  " + s.gloss, "" });
+            out.push_back(std::to_string(n++) + ".  " + s.gloss);
         }
     };
 
-    switch (tab.kind)
+    switch (tabs[active_tab].kind)
     {
         case TabKind::ItEn:
             add_senses(a.it_en, "(nessuna definizione inglese)");
@@ -206,17 +214,7 @@ std::vector<WordMeaningView::BodyItem> WordMeaningView::body_items() const
             add_senses(a.it_it, "(nessuna definizione italiana)");
             break;
         case TabKind::Conj:
-        {
-            const lexicon::ConjTable &t = a.conj[tab.conj_index];
-            // Singular beside its plural, so three rows carry all six persons.
-            for (int i = 0; i < 3; ++i)
-            {
-                out.push_back({ Kind::Conjugation,
-                                lexicon::PERSON_LABELS[i],     t.forms[i],
-                                lexicon::PERSON_LABELS[i + 3], t.forms[i + 3] });
-            }
-            break;
-        }
+            break;  // body_conj_table() serves this tab
     }
     return out;
 }
@@ -311,7 +309,16 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
 
     int y = box_y + PAD_Y;
 
-    // --- Header: surface -> lemma (lemma bold), quick gloss, morphology ---------------
+    // --- Header line 1: surface -> lemma (bold), then the first gloss beside it ---------
+    //
+    // The gloss shares this line rather than taking one of its own, and that is what leaves
+    // the body six lines -- enough for a six-row conjugation table with no scroll. It is the
+    // gloss that rides here, and not the morphology below, because the gloss is duplicated:
+    // it is verbatim sense 1 of the It->En tab, one L/R press away, so eliding it costs
+    // nothing. Morphology appears nowhere else and needs its full line (see below).
+    //
+    // Both halves are elided to a single line. Previously the head went through the wrapping
+    // draw_prose, so a long surface->lemma silently ate a body line.
     {
         std::string lemma = active_analysis >= 0 ? analyses[active_analysis].lemma.lemma
                                                  : std::string();
@@ -332,15 +339,59 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
             runs.push_back({ static_cast<uint32_t>(head.size() - lemma.size()),
                              static_cast<uint32_t>(lemma.size()), text::Style::Bold });
         }
-        y = draw_prose(head, &runs, cx0, y, cw, theme.main_text);
+
+        // The head keeps two thirds at most, so a long one cannot crowd the gloss out
+        // entirely. Elision here is a last resort; ordinary entries are far shorter.
+        const std::string head_shown = text::elide_to_width(font, head, cw * 2 / 3);
+        if (head_shown != head)
+        {
+            runs.clear();  // offsets no longer address the shown text
+        }
+        text::StyledText st = styled_of(head_shown, runs.empty() ? nullptr : &runs);
+        auto head_lines = text::layout_paragraph(st, font, cw, text::Align::Left, false);
+
+        // measure_styled, not text_size: the lemma is drawn bold, and measuring the plain
+        // string put the separator underneath the last glyph of the lemma.
+        const int head_w = text::fixed_floor(
+            text::measure_styled(st, 0, st.length) + text::FIXED_ONE - 1);
+        if (!head_lines.empty())
+        {
+            text::draw_line_aligned(dest, st, head_lines.front(), cx0, cw, y + ascent,
+                                    text::Align::Left, theme.main_text, theme.background,
+                                    &content_clip);
+        }
+
+        if (active_analysis >= 0 && !analyses[active_analysis].it_en.empty())
+        {
+            // Bold is synthesised by emboldening, which adds ink without adding advance, so
+            // the lemma's last glyph paints slightly past its measured width. Sit the
+            // separator off it rather than flush against it.
+            const int gap = PAD_X / 2;
+            const std::string sep = "\xC2\xB7";  // ·
+            int sep_w = 0;
+            text::text_size(font, sep.c_str(), &sep_w, nullptr);
+
+            const int sep_x = cx0 + head_w + gap;
+            const int gloss_x = sep_x + sep_w + gap;
+            const int gloss_w = cx1 - gloss_x;
+            if (gloss_w > 0)
+            {
+                blit_line(dest, font, sep, sep_x, y, theme.secondary_text, theme.background);
+                blit_line(dest, font,
+                          text::elide_to_width(
+                              font, analyses[active_analysis].it_en.front().gloss, gloss_w),
+                          gloss_x, y, theme.secondary_text, theme.background);
+            }
+        }
+        y += line_h;
     }
 
-    if (active_analysis >= 0 && !analyses[active_analysis].it_en.empty())
-    {
-        y = draw_prose(analyses[active_analysis].it_en.front().gloss, nullptr,
-                       cx0, y, cw, theme.secondary_text);
-    }
-
+    // --- Header line 2: morphology, which gets the whole width ------------------------
+    //
+    // 59% of forms produce a morphology string past ~21 characters, and the longest,
+    // "verbo · congiuntivo · imperfetto · lui/lei", measures 537px beside the ‹k/n› counter
+    // in a 538px column. It exactly fills this line, so it can neither share one nor be
+    // elided without losing content the popup shows nowhere else.
     if (active_analysis >= 0)
     {
         const int morph_y = y;
@@ -359,12 +410,12 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     }
 
     y += PAD_Y / 2;
-    rule(y);
-    y += 1 + PAD_Y / 2;
 
     // --- No entry: fuzzy "did you mean" suggestions, as a selectable list --------------
     if (active_analysis < 0 && !suggestions.empty())
     {
+        rule(y);
+        y += 1 + PAD_Y / 2;
         draw_prose("Forse cercavi:", nullptr, cx0, y, cw, theme.secondary_text);
         y += line_h + PAD_Y / 4;
 
@@ -392,11 +443,15 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         return true;
     }
 
-    // --- Tab strip: "◂ [Title] ▸" centred, active title in a filled pill ---------------
+    // --- Tab strip: "Â« [Title] Â»" left-aligned, active title in a filled pill -----------
     //
     // Drawn only when there is somewhere to cycle to. With one tab it was a pill that
     // could not be left, a "1/1" counter saying nothing, and a rule -- three lines of
     // chrome above what is often a one-line answer. That space goes to the body.
+    //
+    // Left-aligned and with no rule above it: centred between two rules it read as a
+    // formal banner across the popup. It now sits on the header's left margin, and the one
+    // remaining rule is the one that matters -- the one dividing it from the meaning.
     if (tabs.size() > 1)
     {
         const std::string arrow_l = "\xC2\xAB";  // «  (Latin-1: Charis has it; ◂/▸ tofu)
@@ -409,9 +464,8 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         text::text_size(font, arrow_l.c_str(), &wa, nullptr);
         text::text_size(font, title.c_str(), &wt, nullptr);
         const int pill_w = wt + 2 * pill_pad;
-        const int total = wa + arrow_gap + pill_w + arrow_gap + wa;
 
-        int gx = cx0 + (cw - total) / 2;
+        int gx = cx0;
         blit_line(dest, font, arrow_l, gx, y, theme.secondary_text, theme.background);
         gx += wa + arrow_gap;
 
@@ -431,9 +485,12 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
 
         y += line_h;
         y += PAD_Y / 2;
-        rule(y);
-        y += 1 + PAD_Y / 2;
     }
+
+    // A single rule, immediately above the body: after the tab strip when there is one,
+    // straight after the header when there is not.
+    rule(y);
+    y += 1 + PAD_Y / 2;
 
     // --- Body -------------------------------------------------------------------------
     const int hint_y = box_y + box_h - PAD_Y - line_h;
@@ -457,103 +514,54 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     }
     pron_col += PAD_X;
 
-    // Where the plural column starts, measured from the widest singular form actually on
-    // screen rather than fixed, because compound tenses ("siamo andati/andate") are far
-    // wider than simple ones.
-    //
-    // Two columns are only used when both actually fit. Clamping the column instead is what
-    // the earlier version did, and it silently ran the singular form into the plural pronoun
-    // and clipped the plural form mid-word at the right edge -- passato prossimo never fit
-    // and never said so. When they do not fit, the table falls back to one column of six
-    // rows, which is one line past the body and so scrolls. This view is the full-detail
-    // one, so it costs a keypress rather than eliding away a form the reader came here for.
-    int plural_col = 0;
-    bool two_columns = true;
+    // Lay the body out. A tab is either definitions or one conjugation table, so this
+    // branches once on which, rather than flattening a list of tagged rows.
+    const lexicon::ConjTable *conj_table = body_conj_table();
+
+    std::vector<std::string> paragraphs;        // kept alive: StyledText holds c_str() into it
+    std::vector<std::vector<text::Line>> layouts;
+    struct ProseLine { int para; int line; };   // a wrapped line of paragraph `para`
+    std::vector<ProseLine> prose_lines;
+
+    conj::Columns cols = {};
+    std::vector<conj::Row> conj_rows;
+
+    if (conj_table != nullptr)
     {
-        const std::vector<BodyItem> measure_items = body_items();
         int widest_sing = 0;
         int widest_plur = 0;
-        for (const auto &it : measure_items)
+        for (int i = 0; i < 3; ++i)
         {
-            if (it.kind != BodyItem::Kind::Conjugation)
-            {
-                continue;
-            }
             int w = 0;
-            text::text_size(font, it.b.c_str(), &w, nullptr);
+            text::text_size(font, conj_table->forms[i].c_str(), &w, nullptr);
             widest_sing = std::max(widest_sing, w);
-            text::text_size(font, it.d.c_str(), &w, nullptr);
+            text::text_size(font, conj_table->forms[i + 3].c_str(), &w, nullptr);
             widest_plur = std::max(widest_plur, w);
         }
         // A wider gutter than PAD_X between the columns: at PAD_X the singular form and the
-        // plural pronoun read as one run of text.
-        plural_col = pron_col + widest_sing + PAD_X * 2;
-        two_columns = plural_col + pron_col + widest_plur <= body_w;
+        // plural pronoun read as one run of text. When two columns do not fit -- compound
+        // tenses like "sono andato/andata" beside "siamo andati/andate" -- conj::rows falls
+        // back to six single-person rows in natural order, which the body now has room for.
+        cols = conj::columns(pron_col, widest_sing, widest_plur, PAD_X * 2, body_w);
+        conj_rows = conj::rows(cols.two_columns);
     }
-
-    // Flatten body items into physical lines: prose paragraphs wrap; conjugation and blank
-    // items are one line each. `item` indexes back into `items` (not a pointer) so nothing
-    // dangles; `paras` is reserved up front so `paras.back().c_str()` handed to StyledText
-    // below can't be invalidated by a reallocation mid-loop.
-    const std::vector<BodyItem> items = body_items();
-    std::vector<std::string> paras;                        // prose text, kept alive for draw
-    std::vector<std::vector<text::Line>> layouts;
-    paras.reserve(items.size());
-    layouts.reserve(items.size());
-    // `half` is 0 for a paired row or the singular of a split one, 1 for the plural of a
-    // split one; it is meaningless for the other types.
-    struct Phys { int type; int para; int line; int item; int half; };  // type: 0 prose,1 conj,2 blank
-    std::vector<Phys> phys;
-    for (int i = 0; i < static_cast<int>(items.size()); ++i)
+    else
     {
-        const BodyItem &it = items[i];
-        if (it.kind == BodyItem::Kind::Conjugation)
+        paragraphs = body_paragraphs();
+        layouts.reserve(paragraphs.size());
+        for (int i = 0; i < static_cast<int>(paragraphs.size()); ++i)
         {
-            if (two_columns)
-            {
-                phys.push_back({ 1, -1, -1, i, 0 });
-                continue;
-            }
-            // One column: take the whole run of rows in one go and emit every singular
-            // before any plural, so it reads io/tu/lui, noi/voi/loro. Splitting each row
-            // where it stands would interleave them as io/noi/tu/voi.
-            int j = i;
-            while (j < static_cast<int>(items.size())
-                   && items[j].kind == BodyItem::Kind::Conjugation)
-            {
-                ++j;
-            }
-            for (int k = i; k < j; ++k)
-            {
-                phys.push_back({ 1, -1, -1, k, 0 });
-            }
-            for (int k = i; k < j; ++k)
-            {
-                if (!items[k].c.empty())
-                {
-                    phys.push_back({ 1, -1, -1, k, 1 });
-                }
-            }
-            i = j - 1;
-        }
-        else if (it.kind == BodyItem::Kind::Blank || it.a.empty())
-        {
-            phys.push_back({ 2, -1, -1, i, 0 });
-        }
-        else
-        {
-            const int pidx = static_cast<int>(paras.size());
-            paras.push_back(it.a);
-            text::StyledText st = styled_of(paras.back(), nullptr);
+            text::StyledText st = styled_of(paragraphs[i], nullptr);
             layouts.push_back(text::layout_paragraph(st, font, body_w, text::Align::Left, true));
             for (int k = 0; k < static_cast<int>(layouts.back().size()); ++k)
             {
-                phys.push_back({ 0, pidx, k, i, 0 });
+                prose_lines.push_back({ i, k });
             }
         }
     }
 
-    const int total_lines = static_cast<int>(phys.size());
+    const int total_lines = conj_table != nullptr ? static_cast<int>(conj_rows.size())
+                                                  : static_cast<int>(prose_lines.size());
     const int max_scroll = std::max(0, total_lines - body_visible);
     if (body_scroll > max_scroll)
     {
@@ -567,30 +575,27 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         {
             break;
         }
-        const Phys &p = phys[idx];
         const int ry = body_top + r * line_h;
-        if (p.type == 2)
+        if (conj_table != nullptr)
         {
-            continue;
-        }
-        if (p.type == 1)
-        {
-            const BodyItem &it = items[p.item];
-            const std::string &pronoun = p.half == 0 ? it.a : it.c;
-            const std::string &form    = p.half == 0 ? it.b : it.d;
-            blit_line(dest, font, pronoun, cx0, ry, theme.secondary_text, theme.background);
-            blit_line(dest, font, form, cx0 + pron_col, ry, theme.main_text, theme.background);
-            if (two_columns && !it.c.empty())
+            const conj::Row &row = conj_rows[idx];
+            blit_line(dest, font, lexicon::PERSON_LABELS[row.left], cx0, ry,
+                      theme.secondary_text, theme.background);
+            blit_line(dest, font, conj_table->forms[row.left], cx0 + pron_col, ry,
+                      theme.main_text, theme.background);
+            if (row.right >= 0)
             {
-                blit_line(dest, font, it.c, cx0 + plural_col, ry,
-                          theme.secondary_text, theme.background);
-                blit_line(dest, font, it.d, cx0 + plural_col + pron_col, ry,
+                blit_line(dest, font, lexicon::PERSON_LABELS[row.right],
+                          cx0 + cols.plural_col, ry, theme.secondary_text, theme.background);
+                blit_line(dest, font, conj_table->forms[row.right],
+                          cx0 + cols.plural_col + pron_col, ry,
                           theme.main_text, theme.background);
             }
         }
         else
         {
-            text::StyledText st = styled_of(paras[p.para], nullptr);
+            const ProseLine &p = prose_lines[idx];
+            text::StyledText st = styled_of(paragraphs[p.para], nullptr);
             text::draw_line_aligned(dest, st, layouts[p.para][p.line], cx0, body_w,
                                     ry + ascent, text::Align::Left,
                                     theme.main_text, theme.background, &content_clip);

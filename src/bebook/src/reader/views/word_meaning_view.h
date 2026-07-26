@@ -63,21 +63,15 @@ private:
     void load(const std::string &surface);
     void rebuild_tabs();
 
-    // One block of the active tab's body. A `prose` item is a paragraph (a numbered gloss or
-    // a message) that render() wraps + hyphenates and left-aligns. A `conjugation` item is a
-    // (pronoun, form) pair drawn as two aligned columns. A `blank` item is a separator line.
-    struct BodyItem
-    {
-        enum class Kind { Prose, Conjugation, Blank } kind;
-        std::string a;  // prose text, or the singular pronoun
-        std::string b;  // the singular form
-        // The plural of the same person, laid out beside it: io|noi, tu|voi, lui|loro.
-        // Six persons in three rows rather than six -- the body is five lines, so a
-        // six-row table always hid `loro`, on every tense, with scroll reset each time.
-        std::string c;  // the plural pronoun
-        std::string d;  // the plural form
-    };
-    std::vector<BodyItem> body_items() const;
+    // The active tab's content. A tab is either definitions or one conjugation table, never
+    // a mix, so these are two accessors discriminated by Tab::kind rather than one row type
+    // carrying a tag plus four strings whose meaning depended on it.
+    //
+    // Paragraphs are numbered glosses, or a single message when there is nothing to show;
+    // render() wraps and hyphenates them. The table is drawn as aligned columns, laid out by
+    // conj::columns() / conj::rows().
+    std::vector<std::string> body_paragraphs() const;   // empty on a conjugation tab
+    const lexicon::ConjTable *body_conj_table() const;  // null on a definitions tab
 
     void move_tab(int dir);
     void scroll_body(int dir);
