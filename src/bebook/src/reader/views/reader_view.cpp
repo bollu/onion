@@ -228,9 +228,9 @@ void ReaderView::on_keypress(SDLKey key)
 
     switch (key) {
         case SW_BTN_A:
-            state->token_view_styling.set_show_title_bar(
-                !state->token_view_styling.get_show_title_bar()
-            );
+            // A starts a word lookup, matching the wiki reader. (It used to toggle the
+            // progress bar; that toggle is gone -- a thin progress bar is always shown.)
+            state->token_view->enter_word_select();
             break;
         case SW_BTN_SELECT:
             open_toc_menu(*this, *state);

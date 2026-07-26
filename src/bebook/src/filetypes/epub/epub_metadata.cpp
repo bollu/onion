@@ -10,6 +10,57 @@
 #include <iostream>
 #include <optional>
 
+namespace
+{
+// xmlGetProp returns a heap xmlChar* the caller must xmlFree; every raw call site here used
+// to leak it (the library indexer parses every book's OPF, so it added up). This copies the
+// value into a std::string and frees it, returning "" when the attribute is absent.
+std::string get_prop(xmlNodePtr node, const char *name)
+{
+    xmlChar *value = xmlGetProp(node, BAD_CAST name);
+    if (!value)
+    {
+        return {};
+    }
+    std::string out(reinterpret_cast<const char *>(value));
+    xmlFree(value);
+    return out;
+}
+
+// Minimal percent-decoding for epub hrefs ("chapter%201.xhtml" -> "chapter 1.xhtml"), so a
+// resource with a space or other reserved character resolves against the zip's real path.
+// Kept local so the reader link needn't pull in the ZIM module's copy; malformed escapes are
+// left as-is.
+std::string decode_href(const std::string &s)
+{
+    auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i)
+    {
+        if (s[i] == '%' && i + 2 < s.size())
+        {
+            const int hi = hex(s[i + 1]);
+            const int lo = hex(s[i + 2]);
+            if (hi >= 0 && lo >= 0)
+            {
+                out.push_back(static_cast<char>((hi << 4) | lo));
+                i += 2;
+                continue;
+            }
+        }
+        out.push_back(s[i]);
+    }
+    return out;
+}
+}  // namespace
+
 NavPoint::NavPoint(const std::string &label)
     : NavPoint(label, "", "")
 {
@@ -50,12 +101,12 @@ std::string epub_parse_rootfile_path(const char *container_xml)
     std::string rootfile_path;
     if (node)
     {
-        auto full_path = xmlGetProp(node, BAD_CAST "full-path");
-        auto media_type = xmlGetProp(node, BAD_CAST "media-type");
+        std::string full_path = get_prop(node, "full-path");
+        std::string media_type = get_prop(node, "media-type");
 
-        if (xmlStrEqual(media_type, BAD_CAST "application/oebps-package+xml"))
+        if (media_type == "application/oebps-package+xml")
         {
-            rootfile_path = std::string((const char*) full_path);
+            rootfile_path = full_path;
         }
         else
         {
@@ -85,19 +136,22 @@ std::unordered_map<std::string, ManifestItem> parse_package_manifest(const std::
 
     while (node)
     {
-        const char *id = (const char *)xmlGetProp(node, BAD_CAST "id");
-        const char *href = (const char *)xmlGetProp(node, BAD_CAST "href");
-        const char *media_type = (const char *)xmlGetProp(node, BAD_CAST "media-type");
-        const char *properties = (const char *)xmlGetProp(node, BAD_CAST "properties");
-        if (id && href && media_type)
+        std::string id = get_prop(node, "id");
+        std::string href = get_prop(node, "href");
+        std::string media_type = get_prop(node, "media-type");
+        std::string properties = get_prop(node, "properties");
+        if (!id.empty() && !href.empty() && !media_type.empty())
         {
+            // Hrefs are URL-encoded per the epub spec; decode so a file with a space (%20)
+            // resolves against the zip's real path.
+            std::string href_decoded = decode_href(href);
             manifest.emplace(
-                std::string(id),
+                std::move(id),
                 ManifestItem{
-                    href,
-                    (base_path / href).lexically_normal(),
-                    std::string(media_type),
-                    std::string(properties ? properties : "")
+                    href_decoded,
+                    (base_path / href_decoded).lexically_normal(),
+                    std::move(media_type),
+                    std::move(properties)
                 }
             );
         }
@@ -153,8 +207,7 @@ std::string parse_creator(xmlNodePtr metadata_child)
         std::string name = element_text(node);
         if (!name.empty())
         {
-            const char *role = (const char *)xmlGetProp(node, BAD_CAST "role");
-            if (role && std::string(role) == "aut")
+            if (get_prop(node, "role") == "aut")
             {
                 return name;
             }
@@ -176,9 +229,9 @@ std::string parse_meta_cover_id(xmlNodePtr metadata_child)
     xmlNodePtr node = elem_first_by_name(metadata_child, BAD_CAST "meta");
     while (node)
     {
-        const char *name = (const char *)xmlGetProp(node, BAD_CAST "name");
-        const char *content = (const char *)xmlGetProp(node, BAD_CAST "content");
-        if (name && content && std::string(name) == "cover")
+        std::string name = get_prop(node, "name");
+        std::string content = get_prop(node, "content");
+        if (name == "cover" && !content.empty())
         {
             return content;
         }
@@ -235,10 +288,10 @@ std::vector<std::string> parse_package_spine(xmlNodePtr node)
 
     while (node)
     {
-        const xmlChar *idref = xmlGetProp(node, BAD_CAST "idref");
-        if (idref)
+        std::string idref = get_prop(node, "idref");
+        if (!idref.empty())
         {
-            spine_ids.emplace_back((const char*)idref);
+            spine_ids.push_back(std::move(idref));
         }
 
         node = elem_next_by_name(node, BAD_CAST "itemref");
@@ -273,10 +326,10 @@ bool epub_parse_package_contents(const std::string &rootfile_path, const char *p
         );
         if (spine)
         {
-            const xmlChar *toc_attr = xmlGetProp(spine, BAD_CAST "toc");
-            if (toc_attr)
+            std::string toc_attr = get_prop(spine, "toc");
+            if (!toc_attr.empty())
             {
-                out_package.toc_id = (const char*)toc_attr;
+                out_package.toc_id = std::move(toc_attr);
             }
         }
     }
@@ -318,17 +371,17 @@ void parse_nav_point(const std::filesystem::path &base_path, xmlNodePtr node, st
         {
             return;
         }
-        const xmlChar *src_str = xmlGetProp(content_node, BAD_CAST "src");
-        if (!src_str || xmlStrlen(src_str) == 0)
+        src = get_prop(content_node, "src");
+        if (src.empty())
         {
             return;
         }
-        src = (const char*)src_str;
     }
+    const std::string src_decoded = decode_href(src);
     out.emplace_back(
         label,
-        src,
-        (base_path / src).lexically_normal()
+        src_decoded,
+        (base_path / src_decoded).lexically_normal()
     );
 
     // Look for child elements
@@ -415,16 +468,17 @@ std::optional<NavPoint> try_parse_anchor(xmlNodePtr anchor, const std::filesyste
 {
     if (anchor)
     {
-        const xmlChar *href = xmlGetProp(anchor, BAD_CAST "href");
-        if (href && xmlStrlen(href))
+        std::string href = get_prop(anchor, "href");
+        if (!href.empty())
         {
             auto label = collect_text(elem_first_child(anchor));
             if (!label.empty())
             {
+                const std::string href_decoded = decode_href(href);
                 return NavPoint(
                     label,
-                    (const char*)href,
-                    (base_path / ((const char*)href)).lexically_normal()
+                    href_decoded,
+                    (base_path / href_decoded).lexically_normal()
                 );
             }
         }
@@ -514,8 +568,7 @@ bool epub_parse_nav(const std::string &nav_file_path, const char *nav_xml, std::
     bool found_nav = false;
     while (node)
     {
-        const xmlChar *type_prop = xmlGetProp(node, BAD_CAST "type");
-        if (type_prop && xmlStrEqual(type_prop, BAD_CAST "toc"))
+        if (get_prop(node, "type") == "toc")
         {
             node = elem_first_by_name(elem_first_child(node), BAD_CAST "ol");
             if (node)

@@ -755,6 +755,24 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         );
     }
 
+    // A thin vertical progress bar on the right edge: how far through the book we are, always
+    // visible and unobtrusive like a scrollbar. It sits in the right margin, clear of the text,
+    // filling from the top in proportion to reading progress over a dim full-height track.
+    {
+        const int bar_w = 2;
+        const Sint16 x = static_cast<Sint16>(SCREEN_WIDTH - bar_w);
+        const int pct = std::max(0, std::min(100, state->title_progress_percent));
+        const int filled = SCREEN_HEIGHT * pct / 100;
+
+        SDL_Rect track = {x, 0, (Uint16)bar_w, (Uint16)SCREEN_HEIGHT};
+        SDL_FillRect(dest_surface, &track,
+            SDL_MapRGB(dest_surface->format, theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b));
+
+        SDL_Rect fill = {x, 0, (Uint16)bar_w, (Uint16)filled};
+        SDL_FillRect(dest_surface, &fill,
+            SDL_MapRGB(dest_surface->format, theme.main_text.r, theme.main_text.g, theme.main_text.b));
+    }
+
     return true;
 }
 

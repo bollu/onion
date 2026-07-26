@@ -122,26 +122,26 @@ preinstalled by `make apps`. See `INTEGRATION.md` for what remains.
 
 ### Robustness
 
-- [ ] **`epub_metadata.cpp` leaks every `xmlGetProp` result.** Pre-existing upstream;
-      noticed during WP4 but out of scope. Now more material, since the library
-      indexer parses every book's OPF.
-- [ ] **`epub_reader.cpp` may call `strlen` on an empty vector's `.data()`** when a
-      book has an empty NCX or nav document (`epub_reader.cpp:137` and `:160`).
-      Pre-existing.
-- [ ] **No percent-decoding of hrefs.** A cover or image whose manifest href contains
-      `%20` will not be found.
+- [x] **`epub_metadata.cpp` leaked every `xmlGetProp` result.** Fixed: a `get_prop`
+      helper copies the value into a `std::string` and `xmlFree`s it at every call site.
+- [x] ~~**`epub_reader.cpp` may call `strlen` on an empty vector's `.data()`**~~ Not a
+      real risk in the current code: `read_zip_file_str` returns a `std::string`, whose
+      `.data()` is NUL-terminated, so `strlen` on an empty NCX/nav is 0 and safe.
+- [x] **No percent-decoding of hrefs.** Fixed: a local `decode_href` percent-decodes
+      manifest/nav/ncx hrefs, so a resource whose href contains `%20` now resolves.
 - [ ] **Sustained-FPS check on device has not been done.** The plan asks for 20 FPS
       while page-scrolling justified, hyphenated, mixed-italic text, and for a cold
       scan of ~30 books not to block input. Both are plausible but unverified.
 
 ### Build and packaging
 
-- [ ] **Only the Onion package is exercised.** `create_packages.sh` still emits a
-      MiniUI `.pak`, but nothing about it has been tested since the fork.
+- [x] ~~**Only the Onion package is exercised** / MiniUI `.pak`~~ — stale: there is no
+      `create_packages.sh` or `.pak` in the vendored `src/bebook` tree; packaging is the
+      Onion Makefile's `bebook`/`sideload-*` targets only.
 - [ ] **Charis SIL adds ~3.4MB to the package** (four faces). Subsetting to Latin
       would cut most of that if size becomes a concern.
-- [ ] **`union-miyoomini-toolchain` submodule is now unused.** bebook builds with its
-      own `Containerfile`; the submodule can be dropped, more so if we adopt Onion's.
+- [x] ~~**`union-miyoomini-toolchain` submodule is now unused**~~ — stale: no such
+      submodule exists in this tree; the toolchain is Onion's `Containerfile.toolchain`.
 
 ---
 
