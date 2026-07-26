@@ -1155,58 +1155,29 @@ void TokenView::ws_move_word(int dir)
 
 void TokenView::ws_move_line(int dir)
 {
-    // Exactly one line per press, always. Walking to the "nearest line with words" instead
-    // meant a press at the end of a paragraph crossed the blank separating it from the next
-    // and travelled two lines or more -- and in a book, where paragraphs are still separated
-    // by a blank line, that is most presses.
+    // The next line, landing on its first word. Deliberately the dullest rule available:
+    // the previous two attempts each tried to be clever and each wandered. Walking to the
+    // "nearest line with words" crossed paragraph blanks and travelled two lines or more;
+    // scrolling one line and then re-placing the cursor near the middle let it land on
+    // whichever line happened to sit closest, which is not the same line twice running.
     //
-    // So the page moves by one and the cursor is placed afterwards. The cursor must still
-    // land on a word, but that is a question of where it goes, not of how far the page went.
-    const int moved = scroll_reporting(dir);
-    if (moved == 0)
+    // Here the cursor moves one word-bearing line and the camera follows it, so the only
+    // thing that varies is how far the page scrolls -- and that is the camera's job.
+    if (!ws_walk(dir))
     {
-        // The document cannot scroll further; walk the cursor within the page instead, so
-        // the last screen is still readable to its end.
-        if (ws_walk(dir))
+        // Nothing in that direction within a page: a full-page image, or a plate section.
+        // Scroll anyway, or such a book cannot be moved through at all.
+        if (scroll_reporting(dir * state->half_page()) != 0)
         {
-            auto spans = spans_at(state->line_scroller, state->ws_line);
-            state->ws_word = std::min(state->ws_word, std::max(0, (int)spans.size() - 1));
+            ws_seed();
+            state->needs_render = true;
         }
         return;
     }
 
-    state->ws_line = ws_camera::cursor_after(state->ws_line, moved);
-    ws_place_near(ws_camera::target_line(state->num_text_display_lines()));
+    state->ws_word = 0;
+    ws_recentre();
     state->needs_render = true;
-}
-
-// Put the cursor on the nearest line to `row` that has words, searching outward so it lands
-// as close to where the eye already is as the page allows.
-void TokenView::ws_place_near(int row)
-{
-    const int n = state->num_text_display_lines();
-    for (int offset = 0; offset < n; ++offset)
-    {
-        for (int dir = -1; dir <= 1; dir += 2)
-        {
-            const int line = row + offset * dir;
-            if (line < 0 || line >= n)
-            {
-                continue;
-            }
-            auto spans = spans_at(state->line_scroller, line);
-            if (!spans.empty())
-            {
-                state->ws_line = line;
-                state->ws_word = std::min(state->ws_word, (int)spans.size() - 1);
-                return;
-            }
-            if (offset == 0)
-            {
-                break;  // row itself only needs checking once
-            }
-        }
-    }
 }
 
 bool TokenView::ws_walk(int dir)

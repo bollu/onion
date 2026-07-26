@@ -84,6 +84,7 @@ void initialize_views(
                 view_stack,
                 state_store,
                 [&task_queue](task_func task){ task_queue.submit(task); },
+                [&jobs](std::unique_ptr<Job> job) { jobs.clear(); jobs.submit(std::move(job)); },
                 [&opened](int percent){ opened.progress_percent = percent; }
             )
         );
@@ -207,6 +208,10 @@ int main(int argc, char **argv)
 
     // Setup views
     TaskQueue task_queue;
+
+    // Interruptible background work, run in the slack the frame limiter would otherwise
+    // sleep away, so the frame rate is unchanged by construction.
+    JobRunner jobs;
     ViewStack view_stack;
 
     std::optional<std::filesystem::path> requested_book_path = (
@@ -257,11 +262,6 @@ int main(int argc, char **argv)
 
     // Timing
     Timer idle_timer;
-    // Background work runs in the slack the frame limiter would otherwise sleep away, so
-    // the frame rate is unchanged by construction: the deadline handed to the runner is the
-    // one limit_fps was already going to enforce.
-    JobRunner jobs;
-
     FPSLimiter limit_fps(TARGET_FPS);
     const uint32_t avg_loop_time = 1000 / TARGET_FPS;
 

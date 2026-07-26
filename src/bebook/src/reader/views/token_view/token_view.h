@@ -33,8 +33,6 @@ class TokenView: public View
     // needed. `land_last` picks which word to land on when stepping onto a new line.
     void ws_move_word(int dir);
     void ws_move_line(int dir);
-    // Place the cursor on the nearest line to `row` that has words.
-    void ws_place_near(int row);
     // Walk `dir` to the nearest line that has words, scrolling if needed but bounded to
     // ~one page so a press over a large image can't jump far; restores the scroll position
     // and returns false if no word is found within the budget. Updates ws_line on success.

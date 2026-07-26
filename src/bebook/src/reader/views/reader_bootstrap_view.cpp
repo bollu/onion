@@ -20,6 +20,7 @@ struct ReaderBootstrapViewState
     ViewStack &view_stack;
     StateStore &state_store;
     std::function<void(int)> on_progress;
+    std::function<void(std::unique_ptr<Job>)> submit_job;
 
     bool is_done = false;
     bool needs_render = true;
@@ -30,6 +31,7 @@ struct ReaderBootstrapViewState
         TokenViewStyling &token_view_styling,
         ViewStack &view_stack,
         StateStore &state_store,
+        std::function<void(std::unique_ptr<Job>)> submit_job,
         std::function<void(int)> on_progress
     ) :
         book_path(book_path),
@@ -37,7 +39,8 @@ struct ReaderBootstrapViewState
         token_view_styling(token_view_styling),
         view_stack(view_stack),
         state_store(state_store),
-        on_progress(on_progress)
+        on_progress(on_progress),
+        submit_job(std::move(submit_job))
     {
     }
 };
@@ -73,6 +76,16 @@ void ReaderBootstrapView::load_reader()
         view_stack
     );
 
+    // Only the newest request survives: an answer for a word the cursor has left is of no
+    // use, and dropping the old job releases its statement.
+    if (state->submit_job)
+    {
+        auto submit = state->submit_job;
+        reader_view->set_job_submitter([submit](std::unique_ptr<Job> job) {
+            submit(std::move(job));
+        });
+    }
+
     reader_view->set_on_change_address(
         [&state_store, book_id, reader, on_progress = state->on_progress](DocAddr addr) {
             state_store.set_book_address(book_id, addr);
@@ -92,8 +105,9 @@ ReaderBootstrapView::ReaderBootstrapView(
     ViewStack &view_stack,
     StateStore &state_store,
     std::function<void(std::function<void()>)> async,
+    std::function<void(std::unique_ptr<Job>)> submit_job,
     std::function<void(int)> on_progress
-) : state(std::make_unique<ReaderBootstrapViewState>(book_path, sys_styling, token_view_styling, view_stack, state_store, on_progress))
+) : state(std::make_unique<ReaderBootstrapViewState>(book_path, sys_styling, token_view_styling, view_stack, state_store, std::move(submit_job), on_progress))
 {
     // Perform asynchronously so that rendering can continue
     async([this](){ load_reader(); });
