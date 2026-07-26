@@ -136,6 +136,12 @@ int main(int, char **)
                 {
                     state_store.flush();
                 }
+                else if (key == SW_BTN_START)
+                {
+                    // START returns to the main menu from anywhere, uniform with
+                    // bebook/bewiki.
+                    quit = true;
+                }
                 else
                 {
                     // MENU is left to keymon (GameSwitcher), like bebook: keys dispatched raw.

@@ -153,14 +153,11 @@ ReaderView::ReaderView(
         }
     });
 
-    // Open the dictionary popup when the word-select highlight is confirmed with A. START
-    // inside the popup leaves the book entirely, so wire the popup's exit hook to this view.
+    // Open the dictionary popup when the word-select highlight is confirmed with A.
     state->token_view->set_on_open_word([this](const std::string &surface) {
-        auto view = std::make_shared<WordMeaningView>(
+        state->view_stack.push(std::make_shared<WordMeaningView>(
             surface, state->lexicon, state->sys_styling
-        );
-        view->set_on_exit_reader([this] { state->is_done = true; });
-        state->view_stack.push(view);
+        ));
     });
 
     // Feed the word-select HUD a one-line meaning for the highlighted word.
@@ -210,16 +207,9 @@ bool ReaderView::is_done()
 
 void ReaderView::on_keypress(SDLKey key)
 {
-    // START leaves the book, from anywhere at this level (reading or word-select). Checked
-    // before the word-select forward so the picker can't swallow it.
-    if (key == SW_BTN_START)
-    {
-        state->is_done = true;
-        return;
-    }
-
-    // While word-select owns the keyboard, route everything (including A/B) to it, so A
-    // opens the meaning popup and B exits the mode (the inverse of the L/R that entered it).
+    // START (return to the main menu) is handled at the top level in main.cpp, so it is not
+    // seen here. While word-select owns the keyboard, route everything (including A/B) to it,
+    // so A opens the meaning popup and B exits the mode (the inverse of the L/R that entered).
     if (state->token_view->is_word_select_active())
     {
         state->token_view->on_keypress(key);

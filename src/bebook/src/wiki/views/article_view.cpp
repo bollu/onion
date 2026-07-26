@@ -410,10 +410,8 @@ void ArticleView::on_keypress(SDLKey key)
                 // page full of underlined links reads as the app breaking.
                 state->token_view->enter_word_select();
                 break;
-            case SW_BTN_START:
-                // Out to the reading list in one press, rather than unwinding by hand.
-                state->step(nav::Event::HomeRequested);
-                break;
+            // START (return to the main menu) is handled at the top level in main.cpp. Back
+            // to the reading list is B (go_back), which unwinds history then exits.
             case SW_BTN_SELECT:
                 open_menu();
                 break;

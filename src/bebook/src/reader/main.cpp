@@ -346,6 +346,13 @@ int main(int argc, char **argv)
                         {
                             state_store.flush();
                         }
+                        else if (key == SW_BTN_START)
+                        {
+                            // START returns to the main menu from anywhere in the app,
+                            // handled here (not per-view) so it is uniform across
+                            // bebook/bewiki/bedict and works even over a modal/menu.
+                            quit = true;
+                        }
                         else
                         {
                             view_stack.on_keypress(key);

@@ -41,11 +41,6 @@ public:
     void on_keypress(SDLKey key) override;
     void on_keyheld(SDLKey key, uint32_t held_time_ms) override;
 
-    // Set by ReaderView so START leaves the book from inside the popup: the callback marks
-    // the reader done, and the popup closes itself, so the stack pops both. Left unset by
-    // the BeDict app, where START has nothing to exit and is ignored.
-    void set_on_exit_reader(std::function<void()> callback);
-
 private:
     enum class TabKind { ItEn, ItIt, Conj };
     struct Tab { TabKind kind; std::string title; int conj_index; };
@@ -96,9 +91,6 @@ private:
 
     bool _is_done = false;
     bool _needs_render = true;
-
-    // Wired by ReaderView so START exits the book from the popup; unset in the BeDict app.
-    std::function<void()> on_exit_reader;
 
     Throttled scroll_throttle;
 };

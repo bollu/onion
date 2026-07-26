@@ -498,6 +498,12 @@ int main(int argc, char **argv)
                     {
                         state_store.flush();
                     }
+                    else if (key == SW_BTN_START)
+                    {
+                        // START returns to the main menu from anywhere in the app, uniform
+                        // with bebook/bedict. The resume stub is saved after the loop.
+                        quit = true;
+                    }
                     else
                     {
                         // No global X hook here: X is the dictionary once word select is

@@ -650,22 +650,8 @@ bool WordMeaningView::is_modal()
     return true;
 }
 
-void WordMeaningView::set_on_exit_reader(std::function<void()> callback)
-{
-    on_exit_reader = std::move(callback);
-}
-
 void WordMeaningView::on_keypress(SDLKey key)
 {
-    // START leaves the book entirely, even from inside the popup (ReaderView wires this).
-    // Closing the popup and marking the reader done lets the stack pop both in one pass.
-    if (key == SW_BTN_START && on_exit_reader)
-    {
-        on_exit_reader();
-        _is_done = true;
-        return;
-    }
-
     // "Did you mean" list: up/down move the cursor, A opens the picked word.
     if (active_analysis < 0 && !suggestions.empty())
     {
