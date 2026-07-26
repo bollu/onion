@@ -20,15 +20,14 @@ WordPreview summarize_word(const lexicon::LexiconService &lexicon, const std::st
     auto entries = lexicon.lemmatize(surface);
     if (entries.empty())
     {
-        // Unknown: show the word and the nearest thing the lexicon does know. A blank line
-        // here reads as the app being broken rather than the word being unrecognised, and
-        // proper nouns and rare inflections land in this branch constantly.
+        // Unknown: show the word alone. A blank line reads as the app being broken rather
+        // than the word being unrecognised, so the word itself still appears.
+        //
+        // No fuzzy suggestion here. suggest() runs an FTS trigram query and then reranks by
+        // edit distance, and this sits on the render path: it fired on every cursor move
+        // onto an unknown word, which on a wiki page is most proper nouns, and the cursor
+        // visibly stalled. It belongs off the frame -- see TODO.md.
         out.subject = surface;
-        const auto near = lexicon.suggest(surface, 1);
-        if (!near.empty())
-        {
-            out.grammar = "? forse: " + near.front().lemma;
-        }
         return out;
     }
 

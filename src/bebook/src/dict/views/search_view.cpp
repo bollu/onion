@@ -3,6 +3,7 @@
 #include "dict/match_detail.h"
 
 #include "reader/config.h"
+#include "reader/ui_chrome.h"
 #include "reader/conj_layout.h"
 #include "reader/system_styling.h"
 #include "reader/view_stack.h"
@@ -36,27 +37,7 @@ constexpr size_t MAX_SENSES_NO_CONJ = 4;
 // ASCII-only on-screen keyboard: lower-case QWERTY plus the apostrophe for Italian elisions
 // (l', dell'). Words are searched folded, so ASCII finds the accented entries. Space isn't
 // offered (multiword entries are filtered from results); backspace is on the Y/L1 buttons.
-const std::vector<std::string> &keyboard()
-{
-    static const std::vector<std::string> kb = {
-        "qwertyuiop",
-        "asdfghjkl",
-        "zxcvbnm'",
-    };
-    return kb;
-}
 
-int blit(SDL_Surface *dest, text::Font *font, const std::string &s, int x, int y,
-         SDL_Color fg, SDL_Color bg)
-{
-    if (s.empty()) return 0;
-    auto surf = surface_unique_ptr{ text::render_text_shaded(font, s.c_str(), fg, bg) };
-    if (!surf) return 0;
-    SDL_Rect dst = { static_cast<Sint16>(x), static_cast<Sint16>(y), 0, 0 };
-    int w = surf->w;
-    SDL_BlitSurface(surf.get(), nullptr, dest, &dst);
-    return w;
-}
 
 } // namespace
 
@@ -221,12 +202,12 @@ void SearchView::backspace()
 
 void SearchView::activate_key()
 {
-    type_char(keyboard()[kb_row][kb_col]);
+    type_char(ui::keyboard_rows()[kb_row][kb_col]);
 }
 
 void SearchView::move_key(int dr, int dc)
 {
-    const auto &kb = keyboard();
+    const auto &kb = ui::keyboard_rows();
     const int rows = static_cast<int>(kb.size());
     // Wrapping, so no press is ever a no-op: an edge that silently swallows input reads
     // as the app having stopped responding.
@@ -316,7 +297,7 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
     int y = MARGIN;
     {
         const std::string shown = "\xF0\x9F\x94\x8D " + query;  // 🔍 (falls back to box if absent)
-        blit(dest, font, query.empty() ? std::string("Cerca una parola\xE2\x80\xA6") : query,
+        ui::blit_text(dest, font, query.empty() ? std::string("Cerca una parola\xE2\x80\xA6") : query,
              cx0, y, query.empty() ? theme.secondary_text : theme.main_text, theme.background);
         // caret
         int qw = 0;
@@ -331,28 +312,10 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
         y += 6;
     }
 
-    // The keyboard and the key hints are chrome, not prose, so they take the monospace face
-    // the settings screen uses: fixed advances line the keys into columns without any
-    // per-cell nudging, and the two screens then read as parts of one system.
-    text::Font *ui_font = cached_load_font(SYSTEM_FONT, styling.get_font_size(),
-                                           FontLoadErrorOpt::NoThrow);
-    if (ui_font == nullptr) { ui_font = font; }
-
-    // The hint line takes a smaller size than the keys. Monospace is wider than the reading
-    // face at the same nominal size, and the full key list overran the screen at body size.
-    text::Font *hint_font = cached_load_font(
-        SYSTEM_FONT, std::max<uint32_t>(12, styling.get_font_size() * 3 / 4),
-        FontLoadErrorOpt::NoThrow);
-    if (hint_font == nullptr) { hint_font = ui_font; }
-
     // --- Keyboard geometry (bottom) ---------------------------------------------------
-    const auto &kb = keyboard();
-    const int cell_w = (cx1 - cx0) / 10;
-    const int cell_h = line_h + 6;
-    const int kb_top = SCREEN_HEIGHT - MARGIN - static_cast<int>(kb.size()) * cell_h;
-    // Centred as a block: the rows are 10, 9 and 8 keys, and left-aligning them made the
-    // shorter rows look accidentally indented rather than deliberately placed.
-    const int kb_left = cx0 + (cx1 - cx0 - 10 * cell_w) / 2;
+    const auto &kb = ui::keyboard_rows();
+    const ui::KeyboardBox kb_box = ui::keyboard_box(cx0, cx1, line_h, MARGIN);
+    const int kb_top = kb_box.top;
 
     // --- Match strip ------------------------------------------------------------------
     // All the candidates at once, active one pilled. L1/R1 cycle it; the panel below
@@ -362,7 +325,7 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
     {
         if (!query.empty())
         {
-            blit(dest, font, "Nessun risultato", cx0, strip_y,
+            ui::blit_text(dest, font, "Nessun risultato", cx0, strip_y,
                  theme.secondary_text, theme.background);
         }
     }
@@ -382,7 +345,7 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
                                   static_cast<Uint16>(ww + 12), static_cast<Uint16>(line_h + 2) };
                 SDL_FillRect(dest, &pill, mapc(theme.highlight_background));
             }
-            blit(dest, font, w, sx, strip_y,
+            ui::blit_text(dest, font, w, sx, strip_y,
                  sel ? theme.highlight_text : theme.secondary_text,
                  sel ? theme.highlight_background : theme.background);
             sx += ww + 26;
@@ -395,7 +358,7 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
                      static_cast<int>(results.size()));
             int pw = 0;
             text::text_size(font, pos, &pw, nullptr);
-            blit(dest, font, pos, cx1 - pw, strip_y, theme.secondary_text, theme.background);
+            ui::blit_text(dest, font, pos, cx1 - pw, strip_y, theme.secondary_text, theme.background);
         }
     }
     y = strip_y + line_h + 4;
@@ -409,12 +372,12 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
     // --- Detail panel -----------------------------------------------------------------
     if (!detail.headline.empty())
     {
-        blit(dest, font, detail.headline, cx0, y, theme.main_text, theme.background);
+        ui::blit_text(dest, font, detail.headline, cx0, y, theme.main_text, theme.background);
         y += line_h;
 
         for (const auto &g : detail.senses)
         {
-            blit(dest, font, g, cx0, y, theme.secondary_text, theme.background);
+            ui::blit_text(dest, font, g, cx0, y, theme.secondary_text, theme.background);
             y += line_h;
         }
 
@@ -476,9 +439,9 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
                             static_cast<Uint16>(fw + 10), static_cast<Uint16>(line_h + 2) };
                         SDL_FillRect(dest, &pill, mapc(theme.highlight_background));
                     }
-                    blit(dest, font, lexicon::PERSON_LABELS[idx], bx, y,
+                    ui::blit_text(dest, font, lexicon::PERSON_LABELS[idx], bx, y,
                          theme.secondary_text, theme.background);
-                    blit(dest, font, form, bx + pron_col, y,
+                    ui::blit_text(dest, font, form, bx + pron_col, y,
                          is_match ? theme.highlight_text : theme.main_text,
                          is_match ? theme.highlight_background : theme.background);
                 }
@@ -495,36 +458,12 @@ bool SearchView::render(SDL_Surface *dest, bool force_render)
         if (results.size() > 1) { hint += "  L/R voci"; }
         if (detail.more)        { hint += "  Y dettagli"; }
         hint += "  START esci";
-        const std::string shown = text::elide_to_width(hint_font, hint, cx1 - cx0);
-        int hw = 0;
-        text::text_size(hint_font, shown.c_str(), &hw, nullptr);
-        blit(dest, hint_font, shown, cx0 + (cx1 - cx0 - hw) / 2, kb_top - line_h,
-             theme.secondary_text, theme.background);
+        ui::draw_key_hint(dest, hint, cx0, cx1, kb_top - line_h,
+                          styling.get_font_size(), font, theme);
     }
 
     // --- Keyboard ---------------------------------------------------------------------
-    for (int r = 0; r < static_cast<int>(kb.size()); ++r)
-    {
-        const int ky = kb_top + r * cell_h;
-        const std::string &row = kb[r];
-        for (int c = 0; c < static_cast<int>(row.size()); ++c)
-        {
-            const std::string label(1, row[c]);
-            // Each row starts half a cell further in per key it lacks, so the rows stay
-            // centred on each other rather than all flush left.
-            const int row_left = kb_left + (10 - static_cast<int>(row.size())) * cell_w / 2;
-            const int kx = row_left + c * cell_w;
-            const bool sel = (r == kb_row && c == kb_col);
-            SDL_Rect cell = { static_cast<Sint16>(kx + 1), static_cast<Sint16>(ky + 1),
-                              static_cast<Uint16>(cell_w - 2), static_cast<Uint16>(cell_h - 2) };
-            SDL_FillRect(dest, &cell, mapc(sel ? theme.highlight_background : theme.background));
-            int lw = 0;
-            text::text_size(ui_font, label.c_str(), &lw, nullptr);
-            blit(dest, ui_font, label, kx + (cell_w - lw) / 2, ky + 3,
-                 sel ? theme.highlight_text : theme.main_text,
-                 sel ? theme.highlight_background : theme.background);
-        }
-    }
+    ui::draw_keyboard(dest, kb_box, kb_row, kb_col, styling.get_font_size(), font, theme);
 
     return true;
 }

@@ -36,6 +36,30 @@
 
 ## Open
 
+- [ ] **Bring back the "forse: ..." suggestion for unknown words, off the render path.**
+      Disabled for now because it froze the cursor. `LexiconService::suggest` runs an FTS5
+      trigram query over ~142k lemmas and then reranks the candidates by edit distance, and
+      `summarize_word` called it synchronously from `TokenView::render` -- so it ran on every
+      cursor move onto a word the lexicon does not know, which on a wiki page is most proper
+      nouns.
+
+      Both pieces needed are already in the tree:
+
+      1. **Do not ask most of the time.** A capitalised word mid-sentence is a proper noun,
+         not a typo, and that is the dominant unknown case in an encyclopedia. Gate on that
+         plus a length window before considering a lookup at all. This alone removes most of
+         the calls.
+      2. **Debounce, then hand it off.** `util/debounced.h` fires once the pokes stop, so a
+         cursor sweeping across a line asks for nothing. `util/task_queue.h` then runs the
+         query off the frame; the peek shows the bare word until an answer arrives and
+         repaints when it does, exactly as the cover loader already does for the library.
+      3. **Cache by surface**, as `ws_preview_surface` already does for the preview itself,
+         so moving back and forth over the same word costs one query.
+
+      If a single query still blows a 50ms frame after that, `suggest` has to become
+      resumable -- a bounded number of candidates scored per call, keeping its heap between
+      calls -- but measure before assuming so.
+
 - [ ] **"Roma" peeks as a type of rice.** The city resolves to the lowercase noun `roma`,
       because lemmatize lowercases before matching and takes the first row. Proper nouns
       probably deserve to win when the surface is capitalised mid-sentence.

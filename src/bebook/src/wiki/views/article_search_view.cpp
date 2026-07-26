@@ -3,6 +3,7 @@
 #include "wiki/wiki_context.h"
 
 #include "reader/config.h"
+#include "reader/ui_chrome.h"
 #include "util/sdl_font_cache.h"
 #include "reader/system_styling.h"
 
@@ -22,35 +23,7 @@
 namespace
 {
 
-// The same layout as the dictionary app's keyboard, deliberately: the two screens are used
-// minutes apart and a different arrangement would cost more than it could gain.
-const std::vector<std::string> &keyboard()
-{
-    static const std::vector<std::string> kb = {
-        "qwertyuiop",
-        "asdfghjkl",
-        "zxcvbnm '",
-    };
-    return kb;
-}
 
-int blit(SDL_Surface *dest, text::Font *font, const std::string &s, int x, int y,
-         SDL_Color fg, SDL_Color bg)
-{
-    if (s.empty())
-    {
-        return 0;
-    }
-    auto surf = surface_unique_ptr{ text::render_text_shaded(font, s.c_str(), fg, bg) };
-    if (!surf)
-    {
-        return 0;
-    }
-    SDL_Rect dst = { static_cast<Sint16>(x), static_cast<Sint16>(y), 0, 0 };
-    const int w = surf->w;
-    SDL_BlitSurface(surf.get(), nullptr, dest, &dst);
-    return w;
-}
 
 const int MARGIN_X = 16;
 const int MAX_RESULTS = 5;
@@ -132,7 +105,7 @@ void ArticleSearchView::set_query(const std::string &q)
 
 void ArticleSearchView::on_keypress(SDLKey key)
 {
-    const auto &kb = keyboard();
+    const auto &kb = ui::keyboard_rows();
     switch (key)
     {
         case SW_BTN_UP:
@@ -238,7 +211,7 @@ bool ArticleSearchView::render(SDL_Surface *dest, bool force_render)
 
     // Query, with a caret so an empty box still reads as somewhere to type.
     {
-        const int w = blit(dest, font, impl->query, cx0, y,
+        const int w = ui::blit_text(dest, font, impl->query, cx0, y,
                            impl->query.empty() ? theme.secondary_text : theme.main_text,
                            theme.background);
         SDL_Rect caret = { static_cast<Sint16>(cx0 + w + 2), static_cast<Sint16>(y + 4),
@@ -256,7 +229,7 @@ bool ArticleSearchView::render(SDL_Surface *dest, bool force_render)
     // themes the highlight text colour equals the main one and would mark nothing.
     if (impl->results.empty())
     {
-        blit(dest, font, impl->query.empty() ? "Cerca un articolo" : "Nessun risultato",
+        ui::blit_text(dest, font, impl->query.empty() ? "Cerca un articolo" : "Nessun risultato",
              cx0, y, theme.secondary_text, theme.background);
     }
     else
@@ -271,7 +244,7 @@ bool ArticleSearchView::render(SDL_Surface *dest, bool force_render)
                                 static_cast<Uint16>(line_h + 2) };
                 SDL_FillRect(dest, &hl, mapc(theme.highlight_background));
             }
-            blit(dest, font,
+            ui::blit_text(dest, font,
                  text::elide_to_width(font, impl->results[i].title, cx1 - cx0),
                  cx0, y,
                  sel ? theme.highlight_text : theme.main_text,
@@ -281,61 +254,16 @@ bool ArticleSearchView::render(SDL_Surface *dest, bool force_render)
     }
 
     // Keyboard, anchored to the bottom so it does not move as results come and go.
-    // Monospace for the chrome, as the settings screen and the dictionary keyboard use:
-    // fixed advances line the keys into columns with no per-cell nudging, and the hint takes
-    // a smaller size because monospace is wider than the reading face at the same nominal
-    // one and the full key list would overrun.
-    text::Font *ui_font = cached_load_font(SYSTEM_FONT, impl->styling.get_font_size(),
-                                           FontLoadErrorOpt::NoThrow);
-    if (ui_font == nullptr) { ui_font = font; }
-    text::Font *hint_font = cached_load_font(
-        SYSTEM_FONT, std::max<uint32_t>(12, impl->styling.get_font_size() * 3 / 4),
-        FontLoadErrorOpt::NoThrow);
-    if (hint_font == nullptr) { hint_font = ui_font; }
+    // Keyboard and key hints come from reader/ui_chrome.h, so this screen and the
+    // dictionary's cannot drift apart -- they are used minutes apart.
+    const ui::KeyboardBox kb_box = ui::keyboard_box(cx0, cx1, line_h, 8);
 
-    // Same cell geometry as the dictionary's keyboard: a row pitch of line_h alone left the
-    // rows touching, so a highlighted key bled into the row beneath it.
-    const int kb_rows = static_cast<int>(keyboard().size());
-    const int cell_w = (cx1 - cx0) / 10;
-    const int cell_h = line_h + 6;
-    const int kb_top = SCREEN_HEIGHT - 8 - kb_rows * cell_h;
-    const int kb_left = cx0 + (cx1 - cx0 - 10 * cell_w) / 2;
+    ui::draw_key_hint(dest, "A scrivi  B canc.  L/R risultati  X apri  START esci",
+                      cx0, cx1, kb_box.top - line_h,
+                      impl->styling.get_font_size(), font, theme);
 
-    {
-        const std::string hint =
-            text::elide_to_width(hint_font,
-                                 "A scrivi  B canc.  L/R risultati  X apri  START esci",
-                                 cx1 - cx0);
-        int hw = 0;
-        text::text_size(hint_font, hint.c_str(), &hw, nullptr);
-        blit(dest, hint_font, hint, cx0 + (cx1 - cx0 - hw) / 2, kb_top - line_h,
-             theme.secondary_text, theme.background);
-    }
-
-    for (int r = 0; r < kb_rows; ++r)
-    {
-        const std::string &row = keyboard()[r];
-        const int ky = kb_top + r * cell_h;
-        // Each row starts half a cell further in per key it lacks, so the rows stay centred
-        // on each other rather than all flush left.
-        const int row_left = kb_left + (10 - static_cast<int>(row.size())) * cell_w / 2;
-        for (int c = 0; c < static_cast<int>(row.size()); ++c)
-        {
-            const bool sel = (r == impl->kb_row && c == impl->kb_col);
-            const int kx = row_left + c * cell_w;
-
-            SDL_Rect cell = { static_cast<Sint16>(kx + 1), static_cast<Sint16>(ky + 1),
-                              static_cast<Uint16>(cell_w - 2), static_cast<Uint16>(cell_h - 2) };
-            SDL_FillRect(dest, &cell, mapc(sel ? theme.highlight_background : theme.background));
-
-            const std::string label(1, row[c]);
-            int lw = 0;
-            text::text_size(ui_font, label.c_str(), &lw, nullptr);
-            blit(dest, ui_font, label, kx + (cell_w - lw) / 2, ky + 3,
-                 sel ? theme.highlight_text : theme.main_text,
-                 sel ? theme.highlight_background : theme.background);
-        }
-    }
+    ui::draw_keyboard(dest, kb_box, impl->kb_row, impl->kb_col,
+                      impl->styling.get_font_size(), font, theme);
 
     return true;
 }
