@@ -111,7 +111,8 @@ void open_toc_menu(ReaderView &reader_view, ReaderViewState &state)
     }
 
     toc_select_menu->set_default_on_keypress([](SDLKey key, SelectionMenu &toc) {
-        if (key == SW_BTN_SELECT)
+        // Closes on the key that opened it, so X is a toggle rather than a one-way door.
+        if (key == SW_BTN_X)
         {
             toc.close();
         }
@@ -211,7 +212,9 @@ void ReaderView::on_keypress(SDLKey key)
     // seen here. The word cursor is always live, so there is no mode to route around: keys
     // the book itself does not claim go straight to it.
     switch (key) {
-        case SW_BTN_SELECT:
+        case SW_BTN_X:
+            // Chapters. A book has no links, so X is free here, and jumping chapter is the
+            // navigation a reader actually reaches for.
             open_toc_menu(*this, *state);
             break;
         case SW_BTN_B:

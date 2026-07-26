@@ -261,8 +261,11 @@ struct TokenViewState
           ),
           // Gentle half-page repeat; and the accelerating cursor gate: ~180ms first steps
           // easing to a ~40ms floor over ~0.5s of holding, then instant stop on release.
-          scroll_throttle(400, 300),
-          ws_move_throttle(250, 180, 40, 300.0f)
+          // Lower thresholds throughout: at TARGET_FPS 20 a frame is 50ms, so that is the
+          // floor, and the old first-repeat delays made holding a direction feel stuck
+          // before it started moving.
+          scroll_throttle(250, 150),
+          ws_move_throttle(160, 110, 50, 260.0f)
     {
     }
 

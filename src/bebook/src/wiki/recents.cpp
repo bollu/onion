@@ -102,7 +102,11 @@ namespace wiki_recents
 
 std::string stub_path_for(const std::string &article_path)
 {
-    return std::string(STUB_DIR) + "/" + sanitize(article_path) + STUB_SUFFIX;
+    // The switcher captions a tile from this basename, not from the label in recentlist,
+    // and file_cleanName turns underscores into spaces -- so the name has to be built here
+    // to read as "Wikipedia (Roma)". Beside games and other apps, a bare article title says
+    // nothing about which app the tile belongs to.
+    return std::string(STUB_DIR) + "/Wikipedia_(" + sanitize(article_path) + ")" + STUB_SUFFIX;
 }
 
 bool is_stub_path(const std::string &path)
@@ -172,8 +176,12 @@ void save(const std::string &zim_path, const std::string &article_path,
         write_rom_screen_plain(surface, stub);
     }
 
+    // "Wikipedia (Roma)" rather than a bare "Roma": in the switcher the tile sits beside
+    // games and other apps, where an article title alone says nothing about which app it
+    // belongs to.
+    const std::string shown = title.empty() ? article_path : title;
     std::ostringstream entry;
-    entry << "{\"label\":\"" << json_escape(title.empty() ? article_path : title)
+    entry << "{\"label\":\"" << json_escape("Wikipedia (" + shown + ")")
           << "\",\"launch\":\"" << LAUNCH_PATH
           << "\",\"type\":5,\"rompath\":\"" << json_escape(stub) << "\"}";
 

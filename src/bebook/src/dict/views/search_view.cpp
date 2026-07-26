@@ -72,8 +72,8 @@ SearchView::SearchView(
       }))
     // 50ms is one frame at TARGET_FPS 20, so this is as fast as the loop allows -- the old
     // 90ms quantised up to 100ms anyway, which is why 90 and 60 felt identical on device.
-    , nav_throttle(180, 50)
-    , backspace_throttle(300, 60)
+    , nav_throttle(140, 50)
+    , backspace_throttle(200, 50)
 {
 }
 

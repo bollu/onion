@@ -68,6 +68,7 @@ private:
     std::vector<std::string> body_paragraphs() const;   // empty on a conjugation tab
     const lexicon::ConjTable *body_conj_table() const;  // null on a definitions tab
 
+    void move_analysis(int dir);
     void move_tab(int dir);
     void scroll_body(int dir);
 

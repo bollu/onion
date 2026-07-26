@@ -24,9 +24,9 @@ TEST(WikiRecents, StubPathIsNamedAfterTheArticle)
     const std::string path = wiki_recents::stub_path_for("Impero_bizantino");
 
     // The Game Switcher captions a tile from the rompath's basename and ignores the label
-    // field, and file_cleanName maps underscores to spaces -- so this reads as
-    // "Impero bizantino" with no work.
-    ASSERT_NE(path.find("Impero_bizantino"), std::string::npos);
+    // field, and file_cleanName maps underscores to spaces -- so the basename has to carry
+    // the app name too, and this reads as "Wikipedia (Impero bizantino)".
+    ASSERT_NE(path.find("Wikipedia_(Impero_bizantino)"), std::string::npos);
     ASSERT_TRUE(wiki_recents::is_stub_path(path));
 }
 
@@ -36,7 +36,7 @@ TEST(WikiRecents, StubPathIsSafeForAwkwardArticleNames)
     const std::string path = wiki_recents::stub_path_for("Foo/Bar:Baz");
 
     ASSERT_EQ(path.find("Foo/Bar"), std::string::npos);
-    ASSERT_NE(path.find("Foo_Bar_Baz"), std::string::npos);
+    ASSERT_NE(path.find("Wikipedia_(Foo_Bar_Baz)"), std::string::npos);
 }
 
 TEST(WikiRecents, KeepsAccentsAndApostrophes)

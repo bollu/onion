@@ -75,7 +75,7 @@ WordMeaningView::WordMeaningView(
     , styling_sub_id(styling.subscribe_to_changes([this](SystemStyling::ChangeId) {
           _needs_render = true;
       }))
-    , scroll_throttle(250, 60)
+    , scroll_throttle(180, 40)
 {
     load(surface);
 }
@@ -218,6 +218,18 @@ std::vector<std::string> WordMeaningView::body_paragraphs() const
             break;  // body_conj_table() serves this tab
     }
     return out;
+}
+
+void WordMeaningView::move_analysis(int dir)
+{
+    if (analyses.size() < 2)
+    {
+        return;
+    }
+    const int n = static_cast<int>(analyses.size());
+    active_analysis = ((active_analysis + dir) % n + n) % n;
+    rebuild_tabs();
+    _needs_render = true;
 }
 
 void WordMeaningView::move_tab(int dir)
@@ -623,17 +635,17 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         std::string hint;
         if (tabs.size() > 1)
         {
-            hint += "L/R schede   ";
+            hint += "\xE2\x86\x94 schede   ";
         }
         if (max_scroll > 0)
         {
             hint += "\xE2\x86\x95 scorri   ";
         }
-        hint += "B indietro";
         if (analyses.size() > 1)
         {
-            hint += "   X analisi";
+            hint += "L/R sensi   ";
         }
+        hint += "B indietro";
         draw_prose(hint, nullptr, cx0, hint_y, cw, theme.secondary_text);
     }
 
@@ -684,15 +696,22 @@ void WordMeaningView::on_keypress(SDLKey key)
         case SW_BTN_B:
             _is_done = true;
             break;
+        // The d-pad moves within one entry; the shoulders move between entries. "ne" has
+        // several unrelated readings and cycling them was on X, which is not where a hand
+        // reaches for "show me the next one".
         case SW_BTN_LEFT:
-        case SW_BTN_L1:
-        case SW_BTN_L2:
             move_tab(-1);
             break;
         case SW_BTN_RIGHT:
+            move_tab(1);
+            break;
+        case SW_BTN_L1:
+        case SW_BTN_L2:
+            move_analysis(-1);
+            break;
         case SW_BTN_R1:
         case SW_BTN_R2:
-            move_tab(1);
+            move_analysis(1);
             break;
         case SW_BTN_UP:
             scroll_body(-1);
@@ -701,12 +720,7 @@ void WordMeaningView::on_keypress(SDLKey key)
             scroll_body(1);
             break;
         case SW_BTN_X:
-            if (analyses.size() > 1)
-            {
-                active_analysis = (active_analysis + 1) % static_cast<int>(analyses.size());
-                rebuild_tabs();
-                _needs_render = true;
-            }
+            move_analysis(1);
             break;
         default:
             break;

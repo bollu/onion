@@ -367,7 +367,10 @@ int main(int argc, char **argv)
                         {
                             view_stack.on_keypress(key);
 
-                            if (key == SW_BTN_X)
+                            // SELECT opens settings; X is the chapter picker, which is
+                            // reached far more often while actually reading and so takes
+                            // the button that is easier to hit.
+                            if (key == SW_BTN_SELECT)
                             {
                                 if (view_stack.top_view() != settings_view)
                                 {

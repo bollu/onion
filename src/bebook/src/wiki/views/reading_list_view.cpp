@@ -176,10 +176,11 @@ void ReadingListView::on_keypress(SDLKey key)
         return;
     }
 
-    // B here means "leave the app": this is the root view, with nothing behind it.
+    // B does nothing here. This is the root view, so B has nothing to back out of, and
+    // making it quit meant one press too many on the way out of an article dropped the
+    // reader out of the app entirely. START leaves.
     if (key == SW_BTN_B)
     {
-        state->is_done = true;
         return;
     }
 
