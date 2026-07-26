@@ -2,41 +2,59 @@
 
 #include "lexicon/lexicon_service.h"
 
-std::string summarize_word(const lexicon::LexiconService &lexicon, const std::string &surface)
+namespace
 {
+const char *const SEP = " \xC2\xB7 ";  // " · " (U+00B7)
+}
+
+WordPreview summarize_word(const lexicon::LexiconService &lexicon, const std::string &surface)
+{
+    WordPreview out;
+
     auto entries = lexicon.lemmatize(surface);
     if (entries.empty())
     {
-        return "";
+        return out;
     }
 
     const lexicon::LemmaEntry &entry = entries.front();
     const std::string &lemma = entry.lemma;
 
-    std::string gloss;
     auto en = lexicon.lookup_it_en(lemma);
     if (!en.empty())
     {
-        gloss = en.front().gloss;
+        out.meaning = en.front().gloss;
     }
     else
     {
         auto it = lexicon.lookup_it_it(lemma);
         if (!it.empty())
         {
-            gloss = it.front().gloss;
+            out.meaning = it.front().gloss;
         }
     }
 
-    const std::string sep = "  \xE2\x80\x94  ";  // spaced em dash
+    // "io faccio": the pronoun makes a conjugated form readable as the person it is, which
+    // is usually the thing a learner is trying to work out.
+    const int person = lexicon::person_index_for_features(entry.features);
+    if (person >= 0)
+    {
+        out.grammar = std::string(lexicon::PERSON_LABELS[person]) + " ";
+    }
+    out.grammar += surface;
 
-    if (!gloss.empty())
+    // The dictionary form, but only when it is not already what is on the page -- for an
+    // uninflected word "cane · cane" would be noise.
+    if (lemma != surface)
     {
-        return lemma + sep + gloss;
+        out.grammar += SEP + lemma;
     }
-    if (!entry.morphology_human.empty())
+
+    const std::string abbrev = lexicon::abbreviate_morphology(entry.pos, entry.features);
+    if (!abbrev.empty())
     {
-        return lemma + sep + entry.morphology_human;
+        out.grammar += SEP + abbrev;
     }
-    return lemma;
+
+    return out;
 }

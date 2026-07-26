@@ -2,6 +2,7 @@
 #define TOKEN_VIEW_H_
 
 #include "reader/view.h"
+#include "reader/word_preview.h"
 #include "doc_api/doc_addr.h"
 
 #include <functional>
@@ -20,11 +21,14 @@ class TokenView: public View
 
     void scroll(int num_lines);
 
-    // Word-selection ("dictionary picker") mode. Entered with a shoulder button while
-    // reading; a highlight moves word by word and A opens the selected word's meaning.
-    void ws_enter();
-    void ws_exit();
+    // The word cursor. There is no mode to enter: it exists from the moment the document
+    // opens, and the page scrolls under it to keep it centred (see ws_camera.h).
+    void ws_seed();
     void ws_handle_key(SDLKey key);
+    // Scroll so the cursor returns to the middle row. Called after every cursor move.
+    void ws_recentre();
+    // Move the cursor half a page (dir -1/+1); the camera then follows.
+    void ws_page(int dir);
     // Move the highlight by whole words (dir -1/+1), crossing lines and scrolling as
     // needed. `land_last` picks which word to land on when stepping onto a new line.
     void ws_move_word(int dir);
@@ -60,45 +64,26 @@ public:
     void set_title(const std::string &title);
     void set_title_progress(int percent);
 
-    // Replaces the title in the bottom bar while a word is selected, which is the moment
-    // the bindings matter and the title does not. Empty leaves the title showing.
+    // Replaces the title in the bottom bar. Empty leaves the title showing.
     void set_word_select_hint(const std::string &hint);
 
     void set_on_scroll(std::function<void(DocAddr)> callback);
 
-    // True while the word-selection highlight is active. The owning view should route all
-    // input here (including A/B) while this holds, so the mode owns the keyboard.
-    bool is_word_select_active() const;
-
-    // Start word selection. The shoulder buttons do this implicitly; the wiki reader also
-    // offers it on A, where a handheld user looks for the primary action first.
-    void enter_word_select();
-
-    // Called with the selected surface form when the user asks for a word's meaning: A in
-    // a book, X once link mode is on. The owner uses this to open the meaning popup. The
-    // mode stays active.
+    // Called with the word under the cursor when the reader asks for its meaning (A). The
+    // owner uses this to open the meaning popup.
     void set_on_open_word(std::function<void(const std::string &)> callback);
 
-    // Called with the highlighted surface form to produce a one-line meaning, shown as a
-    // thin HUD while word-select is active so meanings can be skimmed without opening the
-    // full popup. Optional: if unset (e.g. the wiki reader), no preview line is drawn. The
-    // callback is invoked only when the highlighted word changes.
-    void set_on_word_preview(std::function<std::string(const std::string &)> callback);
+    // Called with the word under the cursor to produce the two-zone peek shown in the
+    // permanent panel above the text, so meanings can be skimmed without opening the full
+    // popup. Invoked only when the cursor lands on a different word.
+    void set_on_word_preview(std::function<WordPreview(const std::string &)> callback);
 
-    // Which scheme the buttons follow once a word is selected. Configuration rather than
-    // state -- it is set once per document and does not change while reading.
-    enum class WordSelectKeys
-    {
-        // A book has nowhere to navigate, so A looks the selected word up.
-        LookupOnA,
-        // A hypertext document gives A to the link under the word and lookup moves to X.
-        FollowOnA,
-    };
+    // Whether this document has links to follow. A always means "what does this mean"; X
+    // follows a link, and exists only where there are links. Configuration rather than
+    // state -- set once per document.
+    void set_follows_links(bool follows);
 
-    // Defaults to LookupOnA, so books are unaffected.
-    void set_word_select_keys(WordSelectKeys keys);
-
-    // Called with a link target when A is pressed on a highlighted word that overlaps one.
+    // Called with a link target when X is pressed on a word that overlaps one.
     void set_on_follow_link(std::function<void(const std::string &)> callback);
 };
 

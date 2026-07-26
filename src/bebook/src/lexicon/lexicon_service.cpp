@@ -559,4 +559,86 @@ std::string describe_morphology(const std::string &pos, const std::string &featu
     return result;
 }
 
+namespace
+{
+// '+'-joined feature codes, e.g. "sub+impf+1+s" -> {sub, impf, 1, s}.
+std::vector<std::string> split_feature_tokens(const std::string &features)
+{
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : features)
+    {
+        if (c == '+')
+        {
+            if (!cur.empty()) { out.push_back(cur); }
+            cur.clear();
+        }
+        else { cur += c; }
+    }
+    if (!cur.empty()) { out.push_back(cur); }
+    return out;
+}
+
+bool has_token(const std::vector<std::string> &t, const char *want)
+{
+    for (const auto &s : t) { if (s == want) { return true; } }
+    return false;
+}
+}
+
+int person_index_for_features(const std::string &features)
+{
+    const std::vector<std::string> t = split_feature_tokens(features);
+    int person = -1;
+    if (has_token(t, "1")) { person = 0; }
+    else if (has_token(t, "2")) { person = 1; }
+    else if (has_token(t, "3")) { person = 2; }
+    if (person < 0) { return -1; }
+    return has_token(t, "p") ? person + 3 : person;
+}
+
+std::string abbreviate_morphology(const std::string &pos, const std::string &features)
+{
+    const std::vector<std::string> t = split_feature_tokens(features);
+
+    // Mood first, since it qualifies the tense: a subjunctive imperfect is "cong. imperf.",
+    // not "imperf.".
+    std::string out;
+    if (has_token(t, "sub"))       { out = "cong."; }
+    else if (has_token(t, "impr")) { return "imper."; }
+
+    auto add = [&out](const char *s) {
+        if (!out.empty()) { out += " "; }
+        out += s;
+    };
+
+    if (has_token(t, "pres"))      { add("pres."); }
+    else if (has_token(t, "impf")) { add("imperf."); }
+    else if (has_token(t, "rem"))  { add("pass. rem."); }
+    else if (has_token(t, "fut"))  { add("fut."); }
+    else if (has_token(t, "cond")) { add("cond."); }
+    else if (has_token(t, "part")) { add("part. pass."); }
+    else if (has_token(t, "ger"))  { add("ger."); }
+    else if (has_token(t, "inf"))  { add("inf."); }
+
+    if (!out.empty())
+    {
+        return out;
+    }
+
+    // No tense or mood: fall back to the part of speech, which is all a noun or adjective
+    // has to say. "congiunz." rather than "cong." so it cannot be read as congiuntivo,
+    // which a learner meets far more often and which owns the short form above.
+    if (pos == "VER")  return "v.";
+    if (pos == "NOUN") return "sost.";
+    if (pos == "ADJ")  return "agg.";
+    if (pos == "ADV")  return "avv.";
+    if (pos == "PRO")  return "pron.";
+    if (pos == "PRE")  return "prep.";
+    if (pos == "CON")  return "congiunz.";
+    if (pos == "ART")  return "art.";
+    if (pos == "DET")  return "det.";
+    return "";
+}
+
 } // namespace lexicon

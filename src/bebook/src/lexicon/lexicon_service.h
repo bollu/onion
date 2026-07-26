@@ -100,6 +100,16 @@ private:
 // Exposed for testing.
 std::string describe_morphology(const std::string &pos, const std::string &features);
 
+// The same thing in dictionary shorthand: "pres.", "pass. rem.", "sost.". For the one-line
+// peek, where describe_morphology's full names ("verbo · congiuntivo · imperfetto ·
+// lui/lei") cost more width than the meaning they sit next to. Empty when the features say
+// nothing worth abbreviating. Exposed for testing.
+std::string abbreviate_morphology(const std::string &pos, const std::string &features);
+
+// Which of the six persons a form is (index into PERSON_LABELS / ConjTable::forms), or -1
+// when it names none -- an infinitive, a participle, a noun.
+int person_index_for_features(const std::string &features);
+
 } // namespace lexicon
 
 #endif

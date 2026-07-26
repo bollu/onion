@@ -75,6 +75,16 @@ class ConjSlot(unittest.TestCase):
         self.assertEqual(bl.conj_slot(["third-person", "singular", "imperfect", "indicative"]),
                          ("imperfetto", 2))
 
+    def test_passato_remoto(self):
+        # Wiktextract tags it historic+past. Most rows also carry "indicative", but ~1 in 8
+        # does not, so the mapping must not require it.
+        self.assertEqual(
+            bl.conj_slot(["first-person", "singular", "past", "historic", "indicative"]),
+            ("passato_remoto", 0))
+        self.assertEqual(
+            bl.conj_slot(["third-person", "plural", "past", "historic"]),
+            ("passato_remoto", 5))
+
     def test_non_surfaced_moods_are_none(self):
         self.assertIsNone(bl.conj_slot(["first-person", "singular", "present", "subjunctive"]))
         self.assertIsNone(bl.conj_slot(["second-person", "singular", "imperative"]))
@@ -90,6 +100,38 @@ class PassatoProssimo(unittest.TestCase):
         forms = bl.passato_prossimo("essere", "andato")
         self.assertEqual(forms[0], "sono andato/andata")
         self.assertEqual(forms[3], "siamo andati/andate")
+
+
+class PassatoRemoto(unittest.TestCase):
+    def test_regular_endings_by_class(self):
+        self.assertEqual(
+            bl.conjugate_regular("parlare", "are", "avere")["passato_remoto"],
+            ["parlai", "parlasti", "parl\u00f2", "parlammo", "parlaste", "parlarono"])
+        self.assertEqual(
+            bl.conjugate_regular("dormire", "ire", "avere")["passato_remoto"],
+            ["dormii", "dormisti", "dorm\u00ec", "dormimmo", "dormiste", "dormirono"])
+
+    def test_isc_infix_does_not_leak(self):
+        # -isc- is a present-tense pattern. It belongs in "capisco" and must not reach the
+        # passato remoto, which takes the plain -ire endings.
+        t = bl.conjugate_regular("capire", "ire_isc", "avere")
+        self.assertIn("isc", t["presente"][0])
+        self.assertEqual(
+            t["passato_remoto"],
+            ["capii", "capisti", "cap\u00ec", "capimmo", "capiste", "capirono"])
+
+    def test_every_irregular_has_one(self):
+        # add_verb indexes tables[tense] for every tense in TENSES, so a missing table is a
+        # KeyError at build time rather than a verb quietly lacking the tab.
+        for lemma, e in bl.IRREGULAR.items():
+            self.assertIn("passato_remoto", e["tables"], lemma)
+            self.assertEqual(len(e["tables"]["passato_remoto"]), 6, lemma)
+
+    def test_it_is_a_surfaced_tense(self):
+        # Unlike passato prossimo, it is a simple tense, so its forms are single words and
+        # get registered for lemmatization under the "rem" code.
+        self.assertIn("passato_remoto", bl.TENSES)
+        self.assertEqual(bl.TENSE_FEAT["passato_remoto"], "rem")
 
 
 class CleanGloss(unittest.TestCase):

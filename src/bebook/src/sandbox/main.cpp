@@ -20,6 +20,8 @@ void dump_meaning(const std::string &word, const std::string &out_path, int tab_
                   const std::string &theme);
 void dump_search(const std::string &query, const std::string &out_path, const std::string &theme);
 void zim_dump(const std::string &path, const std::string &mode, const std::string &arg);
+void dump_reader(const std::string &zim_path, const std::string &article,
+                 const std::string &out_path, int moves, const std::string &theme);
 void wiki_html_dump(const std::string &path);
 void check_reading_list(const std::string &zim_path, const std::string &list_path);
 
@@ -56,6 +58,12 @@ int main(int argc, char** argv)
         else if (mode == "dict" && argc > 3)
         {
             dump_search(argv[2], argv[3], argc > 4 ? argv[4] : "");
+        }
+        else if (mode == "reader" && argc > 4)
+        {
+            dump_reader(argv[2], argv[3], argv[4],
+                        argc > 5 ? atoi(argv[5]) : 0,
+                        argc > 6 ? argv[6] : "");
         }
         else if (mode == "zim" && argc > 2)
         {

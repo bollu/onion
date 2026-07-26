@@ -131,3 +131,10 @@ is the same fix GMU needed in #1749 (commit `1975e9c0`). What is left:
 - [ ] **Deleting a package leaves stale files in `build/`.** `rsync -a` in the
       `$(CACHE)/.setup` target has no `--delete`, so a removed package lingers in an
       existing build tree. Run `make clean` after removing one, or add `--delete`.
+- [ ] **Show noun gender in the peek and the dictionary.** A noun currently reads
+      `cane · sost.`, which says nothing about gender -- the one thing a learner has
+      to memorise per noun. Render it with its definite article instead (`il cane`,
+      `la cagna`), the way a print dictionary marks *m*/*f*. The gender is already in
+      the lexicon: `forms.features` carries `m`/`f`, and `describe_morphology` names
+      them. The work is choosing the right article (il/lo/la/l'), which depends on
+      the initial letters, not only the gender.

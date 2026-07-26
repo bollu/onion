@@ -52,6 +52,7 @@ std::string tense_key_for_features(const std::string &features)
     }
 
     if (has(t, "impf")) { return "imperfetto"; }
+    if (has(t, "rem"))  { return "passato_remoto"; }
     if (has(t, "fut"))  { return "futuro_semplice"; }
     if (has(t, "cond")) { return "condizionale"; }
 
@@ -61,25 +62,6 @@ std::string tense_key_for_features(const std::string &features)
     return "presente";
 }
 
-int person_index_for_features(const std::string &features)
-{
-    const std::vector<std::string> t = split_features(features);
-
-    int person = -1;
-    if (has(t, "1")) { person = 0; }
-    else if (has(t, "2")) { person = 1; }
-    else if (has(t, "3")) { person = 2; }
-
-    if (person < 0)
-    {
-        return -1;
-    }
-
-    // Plural shifts by three: io tu lui | noi voi loro.
-    if (has(t, "p")) { return person + 3; }
-    if (has(t, "s")) { return person; }
-    return person;
-}
 
 const lexicon::ConjTable *pick_table(
     const std::vector<lexicon::ConjTable> &tables, const std::string &key)

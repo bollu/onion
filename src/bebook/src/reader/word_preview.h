@@ -5,10 +5,27 @@
 
 namespace lexicon { class LexiconService; }
 
-// A one-line dictionary summary of `surface`, for the in-book word-select preview HUD.
-// Format: "lemma — first gloss" (It->En preferred, then It->It, then the word's human
-// morphology, then bare lemma). Returns "" when the word resolves to nothing, so the caller
-// can hide the preview line. Truncation/eliding to the screen width is the renderer's job.
-std::string summarize_word(const lexicon::LexiconService &lexicon, const std::string &surface);
+// The one-line peek shown above the text while a word is under the cursor, in two zones so
+// the renderer can style them apart rather than run them together behind a dash:
+//
+//   io faccio · fare · pres.                              to do
+//   <----------- grammar, dim ----------->    <-- meaning, bright -->
+//
+// The grammar zone names the form: the person for a conjugated verb, the dictionary form
+// when it differs from what is on the page, and the tense in dictionary shorthand. That
+// last part is what lets a reader tell "feci" from "faccio" without opening the popup.
+struct WordPreview
+{
+    std::string grammar;
+    std::string meaning;
+
+    bool empty() const { return grammar.empty() && meaning.empty(); }
+};
+
+// Summarize `surface`. It->En glosses are preferred, then It->It. Both zones come back
+// empty when the word resolves to nothing, so the caller can leave the line blank rather
+// than hide it -- the panel is permanent, and a disappearing line would shift the text
+// under it. Eliding to the available width is the renderer's job.
+WordPreview summarize_word(const lexicon::LexiconService &lexicon, const std::string &surface);
 
 #endif

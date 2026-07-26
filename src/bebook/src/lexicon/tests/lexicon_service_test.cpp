@@ -297,3 +297,60 @@ TEST(DescribeMorphology, HandlesTenseAndPerson)
     EXPECT_EQ(describe_morphology("VER", "rem+3+s"), "verbo \xC2\xB7 passato remoto \xC2\xB7 lui/lei");
     EXPECT_EQ(describe_morphology("VER", "part"), "verbo \xC2\xB7 participio");
 }
+
+TEST(AbbreviateMorphology, IndicativeTenses)
+{
+    EXPECT_EQ(abbreviate_morphology("VER", "pres+1+s"), "pres.");
+    EXPECT_EQ(abbreviate_morphology("VER", "impf+3+p"), "imperf.");
+    EXPECT_EQ(abbreviate_morphology("VER", "rem+1+s"), "pass. rem.");
+    EXPECT_EQ(abbreviate_morphology("VER", "fut+2+s"), "fut.");
+    EXPECT_EQ(abbreviate_morphology("VER", "cond+3+s"), "cond.");
+}
+
+TEST(AbbreviateMorphology, MoodQualifiesTheTense)
+{
+    // A subjunctive imperfect is not an imperfect: dropping the mood would make "facessi"
+    // read as "facevo".
+    EXPECT_EQ(abbreviate_morphology("VER", "sub+impf+1+s"), "cong. imperf.");
+    EXPECT_EQ(abbreviate_morphology("VER", "sub+pres+3+p"), "cong. pres.");
+    EXPECT_EQ(abbreviate_morphology("VER", "impr+2+s"), "imper.");
+}
+
+TEST(AbbreviateMorphology, NonFiniteForms)
+{
+    EXPECT_EQ(abbreviate_morphology("VER", "inf"), "inf.");
+    EXPECT_EQ(abbreviate_morphology("VER", "part"), "part. pass.");
+    EXPECT_EQ(abbreviate_morphology("VER", "ger"), "ger.");
+}
+
+TEST(AbbreviateMorphology, FallsBackToThePartOfSpeech)
+{
+    EXPECT_EQ(abbreviate_morphology("NOUN", "base"), "sost.");
+    EXPECT_EQ(abbreviate_morphology("ADJ", "base"), "agg.");
+    EXPECT_EQ(abbreviate_morphology("ADV", ""), "avv.");
+    EXPECT_EQ(abbreviate_morphology("", ""), "") << "nothing to say is better than a stray dot";
+}
+
+TEST(AbbreviateMorphology, CongiunzioneDoesNotCollideWithCongiuntivo)
+{
+    // Both want "cong.". The mood keeps it, because a learner meets it far more often; the
+    // part of speech spells more of itself out rather than being ambiguous.
+    EXPECT_EQ(abbreviate_morphology("CON", "base"), "congiunz.");
+    EXPECT_EQ(abbreviate_morphology("VER", "sub+pres+1+s"), "cong. pres.");
+}
+
+TEST(PersonIndexForFeatures, SingularThenPlural)
+{
+    EXPECT_EQ(person_index_for_features("pres+1+s"), 0);
+    EXPECT_EQ(person_index_for_features("pres+3+s"), 2);
+    EXPECT_EQ(person_index_for_features("pres+1+p"), 3);
+    EXPECT_EQ(person_index_for_features("pres+3+p"), 5);
+}
+
+TEST(PersonIndexForFeatures, FormsWithoutAPersonReportNone)
+{
+    EXPECT_EQ(person_index_for_features("inf"), -1);
+    EXPECT_EQ(person_index_for_features("part"), -1);
+    EXPECT_EQ(person_index_for_features("base"), -1);
+    EXPECT_EQ(person_index_for_features("m+pl"), -1) << "a noun plural is not a verb person";
+}

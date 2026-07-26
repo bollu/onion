@@ -3,6 +3,7 @@
 #include "./token_line_scroller.h"
 #include "./token_view_styling.h"
 #include "./word_layout.h"
+#include "./ws_camera.h"
 
 #include "doc_api/doc_reader.h"
 #include "doc_api/link_runs.h"
@@ -129,15 +130,6 @@ std::vector<WordSpan> spans_at(TokenLineScroller &scroller, int rel)
 
 }  // namespace
 
-// What the view is currently doing with the keyboard. Reading is the default page-turn /
-// scroll mode; WordSelect is the dictionary picker. Kept as an enum rather than a set of
-// bools so adding a mode later (e.g. annotation) is one case, not another flag to clear.
-enum class TokenViewMode
-{
-    Reading,
-    WordSelect,
-};
-
 struct TokenViewState
 {
     SystemStyling &sys_styling;
@@ -164,11 +156,10 @@ struct TokenViewState
 
     std::function<void(DocAddr)> on_scroll;
 
-    // Word-selection mode. When mode == WordSelect, `ws_line` is the relative line offset
-    // (as passed to get_line_relative) of the highlighted line and `ws_word` the word
-    // index within it. Both are re-clamped on render, so a font/size change can never
-    // point them out of range.
-    TokenViewMode mode = TokenViewMode::Reading;
+    // The word cursor, which is always live. `ws_line` is the relative line offset (as
+    // passed to get_line_relative) of the cursor's line and `ws_word` the word index
+    // within it. Both are re-clamped on render, so a font/size change can never point them
+    // out of range.
     int ws_line = 0;
     int ws_word = 0;
     std::function<void(const std::string &)> on_open_word;
@@ -177,20 +168,15 @@ struct TokenViewState
     // one-line summary (books wire it to the lexicon; the wiki reader leaves it unset). The
     // result is cached against the surface it was computed for, so the provider runs only
     // when the highlight lands on a different word.
-    std::function<std::string(const std::string &)> on_word_preview;
-    std::string ws_preview;
+    std::function<WordPreview(const std::string &)> on_word_preview;
+    WordPreview ws_preview;
     std::string ws_preview_surface;
 
-    // Which buttons do what once a word is selected. See ws_handle_key.
-    TokenView::WordSelectKeys word_select_keys = TokenView::WordSelectKeys::LookupOnA;
+    // Whether X follows links. Books have none; a wiki article does. See ws_handle_key.
+    bool has_links = false;
     std::function<void(const std::string &)> on_follow_link;
 
-    bool follows_links() const
-    {
-        return word_select_keys == TokenView::WordSelectKeys::FollowOnA;
-    }
-
-    bool word_select() const { return mode == TokenViewMode::WordSelect; }
+    bool follows_links() const { return has_links; }
 
     // Reading up/down repeats a half-page scroll at a gentle steady rate; the word-select
     // cursor (up/down line, left/right word) repeats with an accelerating ease-in.
@@ -202,10 +188,13 @@ struct TokenViewState
         return SCREEN_HEIGHT / line_height;
     }
 
+    // One line goes to the peek panel at the top, permanently. It is permanent rather
+    // than shown-on-demand because the cursor is always live: a panel that appeared and
+    // vanished would shift every line of text under it as the cursor moved.
     int num_text_display_lines() const
     {
         bool show_title_bar = token_view_styling.get_show_title_bar();
-        return num_display_lines() - (show_title_bar ? 1 : 0);
+        return num_display_lines() - (show_title_bar ? 1 : 0) - 1;
     }
 
     // Reading scroll step: half a screen, keeping a few lines of overlap for context.
@@ -227,6 +216,13 @@ struct TokenViewState
         }
 
         return SCREEN_HEIGHT - line_height - excess_pxl_y() / 2;
+    }
+
+    // Top of the text area: below the peek panel. Every ws_line -> y mapping goes through
+    // this, so the panel's line cannot be double-counted or forgotten in one place.
+    int text_top() const
+    {
+        return excess_pxl_y() / 2 + line_height;
     }
 
     TokenViewState(std::shared_ptr<DocReader> reader, DocAddr address, SystemStyling &sys_styling, TokenViewStyling &token_view_styling)
@@ -280,6 +276,8 @@ struct TokenViewState
 TokenView::TokenView(std::shared_ptr<DocReader> reader, DocAddr address, SystemStyling &sys_styling, TokenViewStyling &token_view_styling)
     : state(std::make_unique<TokenViewState>(reader, address, sys_styling, token_view_styling))
 {
+    // The cursor is live from the moment the document opens; there is no mode to enter.
+    ws_seed();
 }
 
 TokenView::~TokenView()
@@ -320,8 +318,9 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
     }
 
     int num_text_display_lines = state->num_text_display_lines();
-    const Uint16 padding_y = state->excess_pxl_y() / 2;
-    Sint16 line_y = padding_y;
+    // Text starts below the permanent peek panel; see TokenViewState::text_top().
+    const int text_top = state->text_top();
+    Sint16 line_y = static_cast<Sint16>(text_top);
 
     for (int i = 0; i < num_text_display_lines; ++i)
     {
@@ -455,7 +454,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             continue;
         }
 
-        const Sint16 box_y = static_cast<Sint16>(padding_y + i * line_height);
+        const Sint16 box_y = static_cast<Sint16>(text_top + i * line_height);
         const auto &lbg = theme.link_background;
         const Uint32 fill = SDL_MapRGB(dest_surface->format, lbg.r, lbg.g, lbg.b);
 
@@ -494,7 +493,6 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
     // rect in the highlight colour with the word's glyphs redrawn over it. ws_line and
     // ws_word are re-clamped here, so a font/size change between frames (which re-wraps
     // and can shorten a line) can never leave the highlight pointing off the page.
-    if (state->word_select())
     {
         const int n = num_text_display_lines;
 
@@ -544,7 +542,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             WordBox wb = word_box(tl, font, state->text_width(), margin_x, sp);
 
             const int pad = 2;
-            const Sint16 box_y = static_cast<Sint16>(padding_y + state->ws_line * line_height);
+            const Sint16 box_y = static_cast<Sint16>(text_top + state->ws_line * line_height);
             SDL_Rect box = {
                 static_cast<Sint16>(wb.x0 - pad),
                 box_y,
@@ -576,21 +574,16 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 &box
             );
         }
-        else
-        {
-            state->mode = TokenViewMode::Reading;
-        }
+        // Nothing selectable on screen at all (a full-page image): leave the cursor where
+        // it is rather than drawing a highlight over nothing.
     }
 
-    // A meaning preview replaces the bottom title/hint bar while it shows, so word-select
-    // presents a single HUD line rather than two competing bars.
-    const bool show_preview_bar =
-        state->word_select() && state->on_word_preview && !state->ws_preview.empty();
-
-    if (state->token_view_styling.get_show_title_bar() && !show_preview_bar)
+    // The title bar keeps its own line at the bottom; the peek panel has its own at the
+    // top, so the two no longer compete for one.
+    if (state->token_view_styling.get_show_title_bar())
     {
         // Recompute for short book case
-        line_y = padding_y + num_text_display_lines * line_height;
+        line_y = text_top + num_text_display_lines * line_height;
         SDL_Rect title_crop_rect = {0, 0, 0, (Uint16)line_height};
 
         const int title_baseline = line_y + leading_above + ascent;
@@ -665,12 +658,8 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             title_crop_rect.w = SCREEN_WIDTH - margin_x * 2 - percent_w - battery_w;
         }
 
-        // Title, or what the buttons do. While a word is selected the bindings are worth
-        // more than the title -- it is the one moment the user needs them, and it costs no
-        // screen space to say so here rather than on a line of its own.
-        const std::string &bar_text = state->word_select() && !state->hint.empty()
-            ? state->hint
-            : state->title;
+        // Title, or what the buttons do, when the owner has set a hint.
+        const std::string &bar_text = !state->hint.empty() ? state->hint : state->title;
 
         if (bar_text.size() > 0)
         {
@@ -690,35 +679,56 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
     }
 
-    // Word-select meaning HUD: a single thin line at the screen edge opposite the highlight,
-    // so it never covers the selected word. Bottom bar when the highlight is in the top half
-    // of the screen, top bar when it is in the bottom half; long meanings are elided.
-    if (show_preview_bar)
+    // The peek panel: the top line, always present. Grammar on the left in the dim colour,
+    // meaning on the right in the bright one -- position and colour separate the two zones,
+    // so neither needs a dash between them. The panel does not hide when a word has no
+    // entry, because the text below it would then shift by a line as the cursor moved.
     {
-        const int hl_mid = padding_y + state->ws_line * line_height + line_height / 2;
-        const bool at_bottom = hl_mid < SCREEN_HEIGHT / 2;
-        const Sint16 bar_y = static_cast<Sint16>(at_bottom ? SCREEN_HEIGHT - line_height : 0);
-
+        const Sint16 bar_y = 0;
         SDL_Rect bar = {0, bar_y, (Uint16)SCREEN_WIDTH, (Uint16)line_height};
         SDL_FillRect(dest_surface, &bar,
             SDL_MapRGB(dest_surface->format, theme.background.r, theme.background.g, theme.background.b));
 
-        // A hairline rule on the bar's inner edge separates it from the page.
+        // A hairline rule along the bottom edge separates the panel from the page.
         SDL_Rect rule = {
-            0,
-            static_cast<Sint16>(at_bottom ? bar_y : bar_y + line_height - 1),
-            (Uint16)SCREEN_WIDTH, 1
+            0, static_cast<Sint16>(bar_y + line_height - 1), (Uint16)SCREEN_WIDTH, 1
         };
         SDL_FillRect(dest_surface, &rule,
             SDL_MapRGB(dest_surface->format, theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b));
 
-        const std::string shown =
-            text::elide_to_width(font, state->ws_preview, state->text_width());
-        text::draw_text(
-            dest_surface, font, shown.c_str(),
-            margin_x, bar_y + leading_above + ascent,
-            theme.main_text, theme.background
-        );
+        const int baseline = bar_y + leading_above + ascent;
+        const int avail = state->text_width();
+
+        // The meaning is what the reader is after, so it is measured first and keeps its
+        // width; the grammar zone elides into whatever is left.
+        int meaning_w = 0;
+        std::string meaning = state->ws_preview.meaning;
+        if (!meaning.empty())
+        {
+            meaning = text::elide_to_width(font, meaning, avail / 2);
+            text::text_size(font, meaning.c_str(), &meaning_w, nullptr);
+        }
+
+        if (!state->ws_preview.grammar.empty())
+        {
+            const int gap = line_height / 2;
+            const std::string grammar = text::elide_to_width(
+                font, state->ws_preview.grammar, std::max(0, avail - meaning_w - gap));
+            text::draw_text(
+                dest_surface, font, grammar.c_str(),
+                margin_x, baseline,
+                theme.secondary_text, theme.background
+            );
+        }
+
+        if (!meaning.empty())
+        {
+            text::draw_text(
+                dest_surface, font, meaning.c_str(),
+                margin_x + avail - meaning_w, baseline,
+                theme.main_text, theme.background
+            );
+        }
     }
 
     // A thin vertical progress bar on the right edge: how far through the book we are, always
@@ -814,73 +824,38 @@ void TokenView::on_keypress(SDLKey key)
         }
     }
 
-    // While word-select is active it owns the keyboard: shoulders move the highlight, and
-    // the owning view routes A/B/D-pad here too.
-    if (state->word_select())
+    // Shoulders jump half a page. They are free for it because the d-pad drives the cursor
+    // now; the camera then re-centres, so a page jump is the same rule as any other move
+    // rather than a second kind of scrolling.
+    if (shoulder == SW_BTN_LEFT)
     {
-        ws_handle_key(shoulder != SDLK_UNKNOWN ? shoulder : key);
+        ws_page(-1);
+        return;
+    }
+    if (shoulder == SW_BTN_RIGHT)
+    {
+        ws_page(1);
         return;
     }
 
-    // A shoulder press from reading mode enters word-select on the first visible word.
-    if (shoulder != SDLK_UNKNOWN)
-    {
-        ws_enter();
-        return;
-    }
-
-    switch (key) {
-        case SW_BTN_UP:
-            scroll(-state->half_page());
-            break;
-        case SW_BTN_DOWN:
-            scroll(state->half_page());
-            break;
-        // Left/right enter word-select, exactly like the shoulders: reading scrolls with
-        // up/down (half a page), and horizontal movement is for picking a word to look up.
-        case SW_BTN_LEFT:
-        case SW_BTN_RIGHT:
-            ws_enter();
-            break;
-        default:
-            break;
-    }
+    ws_handle_key(key);
 }
 
 void TokenView::on_keyheld(SDLKey key, uint32_t held_time_ms)
 {
-    // In word-select, every direction/shoulder held repeats through the accelerating gate so the
-    // cursor eases up to speed and stops the instant the key is released. In reading, only up/down
-    // repeat (gentle half-page scroll); left/right and the shoulders don't repeat there -- their
-    // first press already entered word-select, so any repeats are handled by the branch above.
-    if (state->word_select())
-    {
-        switch (key)
-        {
-            case SW_BTN_UP:
-            case SW_BTN_DOWN:
-            case SW_BTN_LEFT:
-            case SW_BTN_RIGHT:
-            case SW_BTN_L1:
-            case SW_BTN_R1:
-            case SW_BTN_L2:
-            case SW_BTN_R2:
-                if (state->ws_move_throttle(held_time_ms))
-                {
-                    on_keypress(key);
-                }
-                break;
-            default:
-                break;
-        }
-        return;
-    }
-
+    // Every direction and shoulder repeats through the accelerating gate, so the cursor
+    // eases up to speed and stops the instant the key is released.
     switch (key)
     {
         case SW_BTN_UP:
         case SW_BTN_DOWN:
-            if (state->scroll_throttle(held_time_ms))
+        case SW_BTN_LEFT:
+        case SW_BTN_RIGHT:
+        case SW_BTN_L1:
+        case SW_BTN_R1:
+        case SW_BTN_L2:
+        case SW_BTN_R2:
+            if (state->ws_move_throttle(held_time_ms))
             {
                 on_keypress(key);
             }
@@ -888,11 +863,6 @@ void TokenView::on_keyheld(SDLKey key, uint32_t held_time_ms)
         default:
             break;
     }
-}
-
-bool TokenView::is_done()
-{
-    return false;
 }
 
 DocAddr TokenView::get_address() const
@@ -908,7 +878,16 @@ DocAddr TokenView::get_address() const
 void TokenView::seek_to_address(DocAddr address)
 {
     state->line_scroller.seek_to_address(address);
+    // ws_line is relative to the viewport, which has just moved out from under the cursor,
+    // so place it afresh rather than leaving it pointing at whatever now occupies that row.
+    ws_seed();
+    ws_recentre();
     state->needs_render = true;
+}
+
+bool TokenView::is_done()
+{
+    return false;
 }
 
 void TokenView::set_word_select_hint(const std::string &hint)
@@ -939,31 +918,21 @@ void TokenView::set_on_scroll(std::function<void(DocAddr)> callback)
     state->on_scroll = callback;
 }
 
-// ---- Word-selection mode ----------------------------------------------------------
-
-bool TokenView::is_word_select_active() const
-{
-    return state->word_select();
-}
+// ---- The word cursor ---------------------------------------------------------------
 
 void TokenView::set_on_open_word(std::function<void(const std::string &)> callback)
 {
     state->on_open_word = std::move(callback);
 }
 
-void TokenView::set_on_word_preview(std::function<std::string(const std::string &)> callback)
+void TokenView::set_on_word_preview(std::function<WordPreview(const std::string &)> callback)
 {
     state->on_word_preview = std::move(callback);
 }
 
-void TokenView::enter_word_select()
+void TokenView::set_follows_links(bool follows)
 {
-    ws_enter();
-}
-
-void TokenView::set_word_select_keys(WordSelectKeys keys)
-{
-    state->word_select_keys = keys;
+    state->has_links = follows;
 }
 
 void TokenView::set_on_follow_link(std::function<void(const std::string &)> callback)
@@ -978,33 +947,55 @@ int TokenView::scroll_reporting(int n)
     return state->line_scroller.get_line_number() - before;
 }
 
-void TokenView::ws_enter()
+void TokenView::ws_seed()
 {
+    // Opening position for the cursor: the first line on screen that has words. Nothing
+    // selectable (a full-page image) simply leaves it at 0; the render clamp will move it
+    // onto a word as soon as one scrolls into view.
     const int n = state->num_text_display_lines();
     for (int i = 0; i < n; ++i)
     {
         if (!spans_at(state->line_scroller, i).empty())
         {
-            state->mode = TokenViewMode::WordSelect;
             state->ws_line = i;
             state->ws_word = 0;
             state->needs_render = true;
             return;
         }
     }
-    // Nothing selectable on screen (e.g. a full-page image); stay in reading mode.
 }
 
-void TokenView::ws_exit()
+void TokenView::ws_recentre()
 {
-    if (state->word_select())
+    // Pull the cursor back to the middle row by scrolling the page under it. scroll_reporting
+    // returns what actually moved, which is less than asked at the start and end of a
+    // document -- and that is the entire edge behaviour: the cursor keeps the rows the page
+    // could not give back, so it walks the first and last half-page itself.
+    const int want = ws_camera::scroll_for(state->ws_line, state->num_text_display_lines());
+    if (want == 0)
     {
-        state->mode = TokenViewMode::Reading;
-        // Drop the cached preview so re-entering recomputes for the freshly selected word.
-        state->ws_preview.clear();
-        state->ws_preview_surface.clear();
-        state->needs_render = true;
+        return;
     }
+    const int moved = scroll_reporting(want);
+    state->ws_line = ws_camera::cursor_after(state->ws_line, moved);
+    state->needs_render = true;
+}
+
+void TokenView::ws_page(int dir)
+{
+    // A page jump is a cursor move like any other: shift the cursor half a page and let the
+    // camera scroll to follow, so there is only one rule for how the page moves.
+    const int step = state->half_page();
+    for (int i = 0; i < step; ++i)
+    {
+        if (!ws_walk(dir))
+        {
+            break;
+        }
+    }
+    auto spans = spans_at(state->line_scroller, state->ws_line);
+    state->ws_word = std::min(state->ws_word, std::max(0, (int)spans.size() - 1));
+    ws_recentre();
 }
 
 void TokenView::ws_handle_key(SDLKey key)
@@ -1015,16 +1006,16 @@ void TokenView::ws_handle_key(SDLKey key)
         case SW_BTN_RIGHT: ws_move_word(1); break;
         case SW_BTN_UP:    ws_move_line(-1); break;
         case SW_BTN_DOWN:  ws_move_line(1); break;
-        case SW_BTN_B:     ws_exit(); break;
 
-        // A is the primary action, and what it does depends on the document, not on
-        // whether a callback happens to be set -- wiring one up must never silently
-        // rebind a button. See WordSelectKeys.
+        // A always means "what does this word mean", in a book and in an article alike.
+        // X follows a link, and exists only where there are links to follow. What a button
+        // does depends on the document, not on whether a callback happens to be set --
+        // wiring one up must never silently rebind a button.
         case SW_BTN_A:
-            if (state->follows_links()) { ws_follow_selected(); } else { ws_open_selected(); }
+            ws_open_selected();
             break;
         case SW_BTN_X:
-            if (state->follows_links()) { ws_open_selected(); }
+            if (state->follows_links()) { ws_follow_selected(); }
             break;
 
         default: break;
@@ -1033,11 +1024,6 @@ void TokenView::ws_handle_key(SDLKey key)
 
 void TokenView::ws_move_word(int dir)
 {
-    if (!state->word_select())
-    {
-        return;
-    }
-
     // Stay on the current line if the neighbouring word index is valid.
     {
         auto cur = spans_at(state->line_scroller, state->ws_line);
@@ -1055,21 +1041,18 @@ void TokenView::ws_move_word(int dir)
     {
         auto spans = spans_at(state->line_scroller, state->ws_line);
         state->ws_word = dir > 0 ? 0 : (int)spans.size() - 1;
+        ws_recentre();
     }
 }
 
 void TokenView::ws_move_line(int dir)
 {
-    if (!state->word_select())
-    {
-        return;
-    }
-
     if (ws_walk(dir))
     {
         auto spans = spans_at(state->line_scroller, state->ws_line);
         // Keep the column roughly where it was rather than snapping to word 0.
         state->ws_word = std::min(state->ws_word, (int)spans.size() - 1);
+        ws_recentre();
     }
 }
 
@@ -1119,14 +1102,9 @@ bool TokenView::ws_walk(int dir)
     return false;
 }
 
-// The line and word span currently under the highlight, or false if there is none.
+// The line and word span currently under the cursor, or false if there is none.
 bool TokenView::ws_selected_span(const TextLine **out_line, WordSpan *out_span) const
 {
-    if (!state->word_select())
-    {
-        return false;
-    }
-
     auto spans = spans_at(state->line_scroller, state->ws_line);
     if (state->ws_word < 0 || state->ws_word >= (int)spans.size())
     {

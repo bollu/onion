@@ -146,7 +146,7 @@ void SearchView::rebuild_detail()
     {
         conj_tables = lexicon.conjugations(lemma);
     }
-    detail.person = dict::person_index_for_features(features);
+    detail.person = lexicon::person_index_for_features(features);
     detail.conj = dict::pick_table(conj_tables, dict::tense_key_for_features(features));
 
     // "io faccio -> fare · Indicativo Presente": the form, what it belongs to, and which

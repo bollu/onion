@@ -10,6 +10,7 @@
 #include "reader/views/popup_view.h"
 #include "reader/views/selection_menu.h"
 #include "reader/views/word_meaning_view.h"
+#include "reader/word_preview.h"
 #include "reader/views/token_view/token_view.h"
 #include "reader/views/token_view/token_view_styling.h"
 
@@ -123,12 +124,15 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
     state->token_view = std::make_unique<TokenView>(
         reader, address, state->sys_styling, state->token_view_styling);
 
-    // A follows links here; the dictionary moves to X. See TokenView::WordSelectKeys.
-    state->token_view->set_word_select_keys(TokenView::WordSelectKeys::FollowOnA);
+    // An article has links, so X follows the one under the cursor. A means "what does this
+    // word mean" here exactly as it does in a book.
+    state->token_view->set_follows_links(true);
 
-    // Shown in the bottom bar while a word is selected, which is the one moment the
-    // bindings matter more than the article title.
-    state->token_view->set_word_select_hint("A segui   X significato   B esci");
+    // The peek panel gives the article the same word meanings a book has; it already owns
+    // the lexicon for the popup, and never fed it before.
+    state->token_view->set_on_word_preview([this](const std::string &surface) {
+        return summarize_word(state->lexicon, surface);
+    });
 
     state->token_view->set_on_open_word([this](const std::string &surface) {
         state->view_stack.push(std::make_shared<WordMeaningView>(
@@ -387,38 +391,25 @@ void ArticleView::on_keypress(SDLKey key)
         return;
     }
 
-    // Word select owns the keyboard while active, so A follows a link and X opens the
-    // dictionary rather than reaching the handlers below.
-    if (state->token_view->is_word_select_active())
+    // The word cursor is always live, so there is no mode to route around. B and SELECT are
+    // the article's own; everything else, A and X included, goes to the cursor.
+    switch (key)
     {
-        state->token_view->on_keypress(key);
-    }
-    else
-    {
-        switch (key)
-        {
-            case SW_BTN_B:
-                // Back through the history, then out to the reading list.
-                if (!go_back())
-                {
-                    state->step(nav::Event::BackExhausted);
-                }
-                break;
-            case SW_BTN_A:
-                // A is the primary action, so it starts word select -- the feature the
-                // whole app is built around. It used to toggle the title bar, which on a
-                // page full of underlined links reads as the app breaking.
-                state->token_view->enter_word_select();
-                break;
-            // START (return to the main menu) is handled at the top level in main.cpp. Back
-            // to the reading list is B (go_back), which unwinds history then exits.
-            case SW_BTN_SELECT:
-                open_menu();
-                break;
-            default:
-                state->token_view->on_keypress(key);
-                break;
-        }
+        case SW_BTN_B:
+            // Back through the history, then out to the reading list.
+            if (!go_back())
+            {
+                state->step(nav::Event::BackExhausted);
+            }
+            break;
+        // START (return to the main menu) is handled at the top level in main.cpp. Back
+        // to the reading list is B (go_back), which unwinds history then exits.
+        case SW_BTN_SELECT:
+            open_menu();
+            break;
+        default:
+            state->token_view->on_keypress(key);
+            break;
     }
 
     // Safe here and not before: every TokenView frame has returned, so replacing it

@@ -12,6 +12,14 @@ TEST(TenseKeyForFeatures, IndicativeTensesMapToTheirTables)
     ASSERT_EQ(tense_key_for_features("cond+2+s"), "condizionale");
 }
 
+TEST(TenseKeyForFeatures, ThePassatoRemotoHasItsOwnTable)
+{
+    // Until the tense existed this fell through to the fallback, so "feci" opened on the
+    // present -- indistinguishable from an unrecognised code, which is why it went unseen.
+    ASSERT_EQ(tense_key_for_features("rem+1+s"), "passato_remoto");
+    ASSERT_EQ(tense_key_for_features("rem+3+p"), "passato_remoto");
+}
+
 TEST(TenseKeyForFeatures, AParticipleOpensOnTheCompoundTense)
 {
     // Someone looking up "andato" is holding half of "sono andato".
@@ -36,24 +44,7 @@ TEST(TenseKeyForFeatures, NonFiniteAndUnknownFallBackToThePresent)
     ASSERT_EQ(tense_key_for_features("nonsense+9"), "presente");
 }
 
-TEST(PersonIndexForFeatures, SingularThenPlural)
-{
-    ASSERT_EQ(person_index_for_features("pres+1+s"), 0);  // io
-    ASSERT_EQ(person_index_for_features("pres+2+s"), 1);  // tu
-    ASSERT_EQ(person_index_for_features("pres+3+s"), 2);  // lui/lei
-    ASSERT_EQ(person_index_for_features("pres+1+p"), 3);  // noi
-    ASSERT_EQ(person_index_for_features("pres+2+p"), 4);  // voi
-    ASSERT_EQ(person_index_for_features("pres+3+p"), 5);  // loro
-}
 
-TEST(PersonIndexForFeatures, FormsWithoutAPersonReportNone)
-{
-    ASSERT_EQ(person_index_for_features("inf"), -1);
-    ASSERT_EQ(person_index_for_features("base"), -1);
-    ASSERT_EQ(person_index_for_features("part"), -1);
-    ASSERT_EQ(person_index_for_features(""), -1);
-    ASSERT_EQ(person_index_for_features("m+pl"), -1) << "a noun plural is not a verb person";
-}
 
 namespace
 {

@@ -160,7 +160,7 @@ ReaderView::ReaderView(
         ));
     });
 
-    // Feed the word-select HUD a one-line meaning for the highlighted word.
+    // Feed the peek panel a meaning for the word under the cursor.
     state->token_view->set_on_word_preview([this](const std::string &surface) {
         return summarize_word(state->lexicon, surface);
     });
@@ -208,26 +208,15 @@ bool ReaderView::is_done()
 void ReaderView::on_keypress(SDLKey key)
 {
     // START (return to the main menu) is handled at the top level in main.cpp, so it is not
-    // seen here. While word-select owns the keyboard, route everything (including A/B) to it,
-    // so A opens the meaning popup and B exits the mode (the inverse of the L/R that entered).
-    if (state->token_view->is_word_select_active())
-    {
-        state->token_view->on_keypress(key);
-        return;
-    }
-
+    // seen here. The word cursor is always live, so there is no mode to route around: keys
+    // the book itself does not claim go straight to it.
     switch (key) {
-        case SW_BTN_A:
-            // A starts a word lookup, matching the wiki reader. (It used to toggle the
-            // progress bar; that toggle is gone -- a thin progress bar is always shown.)
-            state->token_view->enter_word_select();
-            break;
         case SW_BTN_SELECT:
             open_toc_menu(*this, *state);
             break;
         case SW_BTN_B:
-            // Idempotent: B only unwinds the dictionary lookup. With no popup or picker open
-            // there is nothing to back out of, and it never leaves the book -- START does.
+            // Idempotent: B only unwinds the dictionary popup. With nothing open there is
+            // nothing to back out of, and it never leaves the book -- START does.
             break;
         default:
             state->token_view->on_keypress(key);

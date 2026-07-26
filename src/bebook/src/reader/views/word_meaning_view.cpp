@@ -34,6 +34,7 @@ std::string short_tense_label(const std::string &tense, const std::string &fallb
     if (tense == "presente")         return "Presente";
     if (tense == "imperfetto")       return "Imperfetto";
     if (tense == "passato_prossimo") return "Passato Pross.";
+    if (tense == "passato_remoto")   return "Passato Rem.";
     if (tense == "futuro_semplice")  return "Futuro";
     if (tense == "condizionale")     return "Condizionale";
     return fallback;

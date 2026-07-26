@@ -18,9 +18,8 @@ namespace dict
 // no indicative table, and anything unrecognised.
 std::string tense_key_for_features(const std::string &features);
 
-// Which of the six persons a form is, as an index into ConjTable::forms, or -1 when the
-// form names no person (an infinitive, a noun).
-int person_index_for_features(const std::string &features);
+// For which person a form is, use lexicon::person_index_for_features -- this used to carry
+// its own copy, which the peek line then needed too.
 
 // The conjugation table matching `key`, or the first available, or null when the lemma has
 // none. Never returns a table for a non-verb.

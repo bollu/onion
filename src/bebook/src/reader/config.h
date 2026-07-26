@@ -43,7 +43,10 @@
 #define DEFAULT_JUSTIFY    true
 #define DEFAULT_HYPHENATE  true
 
-#define DEFAULT_COLOR_THEME "night_contrast"
+// Light by default in all three apps. Only affects a profile that has never picked a
+// theme: every app reads settings_get_color_theme(...).value_or(...), so a saved choice
+// always wins and an already-run install looks unchanged until it is set in Settings.
+#define DEFAULT_COLOR_THEME "light_contrast"
 
 #define CONFIG_FILE_PATH "bebook.cfg"
 #define FALLBACK_STORE_PATH ".bebook_store"

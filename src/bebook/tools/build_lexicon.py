@@ -38,6 +38,7 @@ TENSES = [
     "presente",
     "imperfetto",
     "passato_prossimo",
+    "passato_remoto",
     "futuro_semplice",
     "condizionale",
 ]
@@ -48,6 +49,7 @@ TENSE_FEAT = {
     "imperfetto": "impf",
     "futuro_semplice": "fut",
     "condizionale": "cond",
+    "passato_remoto": "rem",
     # passato_prossimo is compound; its parts are tagged on the auxiliary + participle,
     # so it does not get a simple-tense feature code here.
 }
@@ -62,6 +64,7 @@ REGULAR = {
         "imperfetto":       ["avo", "avi", "ava", "avamo", "avate", "avano"],
         "futuro_semplice":  ["erò", "erai", "erà", "eremo", "erete", "eranno"],
         "condizionale":     ["erei", "eresti", "erebbe", "eremmo", "ereste", "erebbero"],
+        "passato_remoto":  ["ai", "asti", "ò", "ammo", "aste", "arono"],
         "participle":       "ato",
     },
     "ere": {
@@ -69,6 +72,7 @@ REGULAR = {
         "imperfetto":       ["evo", "evi", "eva", "evamo", "evate", "evano"],
         "futuro_semplice":  ["erò", "erai", "erà", "eremo", "erete", "eranno"],
         "condizionale":     ["erei", "eresti", "erebbe", "eremmo", "ereste", "erebbero"],
+        "passato_remoto":  ["ei", "esti", "é", "emmo", "este", "erono"],
         "participle":       "uto",
     },
     "ire": {
@@ -76,6 +80,7 @@ REGULAR = {
         "imperfetto":       ["ivo", "ivi", "iva", "ivamo", "ivate", "ivano"],
         "futuro_semplice":  ["irò", "irai", "irà", "iremo", "irete", "iranno"],
         "condizionale":     ["irei", "iresti", "irebbe", "iremmo", "ireste", "irebbero"],
+        "passato_remoto":  ["ii", "isti", "ì", "immo", "iste", "irono"],
         "participle":       "ito",
     },
     # -isc- present pattern (capire, finire, preferire, ...): the isc infix in 1s,2s,3s,3p.
@@ -84,6 +89,7 @@ REGULAR = {
         "imperfetto":       ["ivo", "ivi", "iva", "ivamo", "ivate", "ivano"],
         "futuro_semplice":  ["irò", "irai", "irà", "iremo", "irete", "iranno"],
         "condizionale":     ["irei", "iresti", "irebbe", "iremmo", "ireste", "irebbero"],
+        "passato_remoto":  ["ii", "isti", "ì", "immo", "iste", "irono"],
         "participle":       "ito",
     },
 }
@@ -122,7 +128,8 @@ def conjugate_regular(lemma, cls, aux):
     base_ending = "ire" if cls.startswith("ire") else cls
     stem = lemma[: -len(base_ending)]
     out = {}
-    for tense in ("presente", "imperfetto", "futuro_semplice", "condizionale"):
+    for tense in ("presente", "imperfetto", "passato_remoto",
+                  "futuro_semplice", "condizionale"):
         out[tense] = [stem + e for e in endings[tense]]
     participle = stem + endings["participle"]
     out["passato_prossimo"] = passato_prossimo(aux, participle)
@@ -151,6 +158,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("sono", "sei", "è", "siamo", "siete", "sono"),
             "imperfetto":      T("ero", "eri", "era", "eravamo", "eravate", "erano"),
+            "passato_remoto":  T("fui", "fosti", "fu", "fummo", "foste", "furono"),
             "futuro_semplice": T("sarò", "sarai", "sarà", "saremo", "sarete", "saranno"),
             "condizionale":    T("sarei", "saresti", "sarebbe", "saremmo", "sareste", "sarebbero"),
         },
@@ -161,6 +169,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("ho", "hai", "ha", "abbiamo", "avete", "hanno"),
             "imperfetto":      T("avevo", "avevi", "aveva", "avevamo", "avevate", "avevano"),
+            "passato_remoto":  T("ebbi", "avesti", "ebbe", "avemmo", "aveste", "ebbero"),
             "futuro_semplice": T("avrò", "avrai", "avrà", "avremo", "avrete", "avranno"),
             "condizionale":    T("avrei", "avresti", "avrebbe", "avremmo", "avreste", "avrebbero"),
         },
@@ -171,6 +180,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("faccio", "fai", "fa", "facciamo", "fate", "fanno"),
             "imperfetto":      T("facevo", "facevi", "faceva", "facevamo", "facevate", "facevano"),
+            "passato_remoto":  T("feci", "facesti", "fece", "facemmo", "faceste", "fecero"),
             "futuro_semplice": T("farò", "farai", "farà", "faremo", "farete", "faranno"),
             "condizionale":    T("farei", "faresti", "farebbe", "faremmo", "fareste", "farebbero"),
         },
@@ -181,6 +191,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("dico", "dici", "dice", "diciamo", "dite", "dicono"),
             "imperfetto":      T("dicevo", "dicevi", "diceva", "dicevamo", "dicevate", "dicevano"),
+            "passato_remoto":  T("dissi", "dicesti", "disse", "dicemmo", "diceste", "dissero"),
             "futuro_semplice": T("dirò", "dirai", "dirà", "diremo", "direte", "diranno"),
             "condizionale":    T("direi", "diresti", "direbbe", "diremmo", "direste", "direbbero"),
         },
@@ -191,6 +202,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("vado", "vai", "va", "andiamo", "andate", "vanno"),
             "imperfetto":      T("andavo", "andavi", "andava", "andavamo", "andavate", "andavano"),
+            "passato_remoto":  T("andai", "andasti", "andò", "andammo", "andaste", "andarono"),
             "futuro_semplice": T("andrò", "andrai", "andrà", "andremo", "andrete", "andranno"),
             "condizionale":    T("andrei", "andresti", "andrebbe", "andremmo", "andreste", "andrebbero"),
         },
@@ -201,6 +213,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("sto", "stai", "sta", "stiamo", "state", "stanno"),
             "imperfetto":      T("stavo", "stavi", "stava", "stavamo", "stavate", "stavano"),
+            "passato_remoto":  T("stetti", "stesti", "stette", "stemmo", "steste", "stettero"),
             "futuro_semplice": T("starò", "starai", "starà", "staremo", "starete", "staranno"),
             "condizionale":    T("starei", "staresti", "starebbe", "staremmo", "stareste", "starebbero"),
         },
@@ -211,6 +224,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("do", "dai", "dà", "diamo", "date", "danno"),
             "imperfetto":      T("davo", "davi", "dava", "davamo", "davate", "davano"),
+            "passato_remoto":  T("diedi", "desti", "diede", "demmo", "deste", "diedero"),
             "futuro_semplice": T("darò", "darai", "darà", "daremo", "darete", "daranno"),
             "condizionale":    T("darei", "daresti", "darebbe", "daremmo", "dareste", "darebbero"),
         },
@@ -221,6 +235,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("so", "sai", "sa", "sappiamo", "sapete", "sanno"),
             "imperfetto":      T("sapevo", "sapevi", "sapeva", "sapevamo", "sapevate", "sapevano"),
+            "passato_remoto":  T("seppi", "sapesti", "seppe", "sapemmo", "sapeste", "seppero"),
             "futuro_semplice": T("saprò", "saprai", "saprà", "sapremo", "saprete", "sapranno"),
             "condizionale":    T("saprei", "sapresti", "saprebbe", "sapremmo", "sapreste", "saprebbero"),
         },
@@ -231,6 +246,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("posso", "puoi", "può", "possiamo", "potete", "possono"),
             "imperfetto":      T("potevo", "potevi", "poteva", "potevamo", "potevate", "potevano"),
+            "passato_remoto":  T("potei", "potesti", "poté", "potemmo", "poteste", "poterono"),
             "futuro_semplice": T("potrò", "potrai", "potrà", "potremo", "potrete", "potranno"),
             "condizionale":    T("potrei", "potresti", "potrebbe", "potremmo", "potreste", "potrebbero"),
         },
@@ -241,6 +257,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("voglio", "vuoi", "vuole", "vogliamo", "volete", "vogliono"),
             "imperfetto":      T("volevo", "volevi", "voleva", "volevamo", "volevate", "volevano"),
+            "passato_remoto":  T("volli", "volesti", "volle", "volemmo", "voleste", "vollero"),
             "futuro_semplice": T("vorrò", "vorrai", "vorrà", "vorremo", "vorrete", "vorranno"),
             "condizionale":    T("vorrei", "vorresti", "vorrebbe", "vorremmo", "vorreste", "vorrebbero"),
         },
@@ -251,6 +268,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("devo", "devi", "deve", "dobbiamo", "dovete", "devono"),
             "imperfetto":      T("dovevo", "dovevi", "doveva", "dovevamo", "dovevate", "dovevano"),
+            "passato_remoto":  T("dovetti", "dovesti", "dovette", "dovemmo", "doveste", "dovettero"),
             "futuro_semplice": T("dovrò", "dovrai", "dovrà", "dovremo", "dovrete", "dovranno"),
             "condizionale":    T("dovrei", "dovresti", "dovrebbe", "dovremmo", "dovreste", "dovrebbero"),
         },
@@ -261,6 +279,7 @@ IRREGULAR = {
         "tables": {
             "presente":        T("vengo", "vieni", "viene", "veniamo", "venite", "vengono"),
             "imperfetto":      T("venivo", "venivi", "veniva", "venivamo", "venivate", "venivano"),
+            "passato_remoto":  T("venni", "venisti", "venne", "venimmo", "veniste", "vennero"),
             "futuro_semplice": T("verrò", "verrai", "verrà", "verremo", "verrete", "verranno"),
             "condizionale":    T("verrei", "verresti", "verrebbe", "verremmo", "verreste", "verrebbero"),
         },
@@ -629,6 +648,10 @@ def conj_slot(tags):
         tense = "futuro_semplice"
     elif "imperfect" in ts and "indicative" in ts:
         tense = "imperfetto"
+    # Passato remoto. Wiktextract tags it "historic"+"past"; "indicative" is present on most
+    # rows but not all, so requiring it would drop a chunk of otherwise good forms.
+    elif "historic" in ts and "past" in ts:
+        tense = "passato_remoto"
     elif "present" in ts and "indicative" in ts:
         tense = "presente"
     else:
