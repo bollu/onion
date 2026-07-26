@@ -414,10 +414,14 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         line_y += line_height;
     }
 
-    // Link underlines. Only the wiki reader produces link runs, so this loop costs epubs
-    // nothing. Drawn before the word-select highlight so the highlight sits on top.
-    // ColorTheme has no link colour, and adding one would touch every theme, so links are
-    // marked with a rule in the secondary text colour rather than by recolouring glyphs.
+    // Link backgrounds. Only the wiki reader produces link runs, so this loop costs epubs
+    // nothing. Drawn before the word-select highlight, which then sits on top.
+    //
+    // Filled and then redrawn rather than filled under the existing glyphs: the shaded
+    // text path assumes the destination is uniformly the palette's background (see
+    // text_render.h), so drawing over a tint would blend every glyph's antialiasing
+    // toward the theme background and ring it with a halo. Same fill-then-clipped-redraw
+    // idiom as the selection highlight below.
     for (int i = 0; i < num_text_display_lines; ++i)
     {
         const DisplayLine *line = state->line_scroller.get_line_relative(i);
@@ -432,9 +436,9 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             continue;
         }
 
-        const int rule_y = padding_y + i * line_height + leading_above + ascent + 2;
-        const auto &fg = theme.secondary_text;
-        const Uint32 rule_colour = SDL_MapRGB(dest_surface->format, fg.r, fg.g, fg.b);
+        const Sint16 box_y = static_cast<Sint16>(padding_y + i * line_height);
+        const auto &lbg = theme.link_background;
+        const Uint32 fill = SDL_MapRGB(dest_surface->format, lbg.r, lbg.g, lbg.b);
 
         for (const auto &link : tl->link_runs)
         {
@@ -447,13 +451,23 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 continue;
             }
 
-            SDL_Rect rule = {
-                static_cast<Sint16>(lb.x0),
-                static_cast<Sint16>(rule_y),
-                static_cast<Uint16>(lb.x1 - lb.x0),
-                1
+            const int pad = 2;
+            SDL_Rect box = {
+                static_cast<Sint16>(lb.x0 - pad),
+                box_y,
+                static_cast<Uint16>((lb.x1 - lb.x0) + 2 * pad),
+                static_cast<Uint16>(line_height)
             };
-            SDL_FillRect(dest_surface, &rule, rule_colour);
+            SDL_FillRect(dest_surface, &box, fill);
+
+            text::StyledText styled = styled_for(tl, font);
+            text::draw_line_aligned(
+                dest_surface, styled, as_text_line(tl),
+                margin_x, state->text_width(),
+                box_y + leading_above + ascent, line_align(tl),
+                theme.main_text, theme.link_background,
+                &box
+            );
         }
     }
 
@@ -507,7 +521,16 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 static_cast<Uint16>(line_height)
             };
 
-            const auto &hlbg = theme.highlight_background;
+            // A selected link takes its own colour, so the highlight itself says whether
+            // the action button will navigate -- without it the reader has to press and
+            // find out. Overlap rather than containment, matching ws_follow_selected:
+            // tokenize_words drops leading punctuation, so the word inside «Roma» starts
+            // a byte after the link its glyphs sit under.
+            const bool on_link =
+                link_run_overlapping(tl->link_runs, sp.start, sp.end) != nullptr;
+            const auto &hlbg = on_link ? theme.link_highlight_background
+                                       : theme.highlight_background;
+
             SDL_FillRect(dest_surface, &box, SDL_MapRGB(dest_surface->format, hlbg.r, hlbg.g, hlbg.b));
 
             // Redraw the whole line's glyphs in the highlight colour but clipped to the word
@@ -518,7 +541,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 dest_surface, styled, as_text_line(tl),
                 margin_x, state->text_width(),
                 box_y + leading_above + ascent, line_align(tl),
-                theme.highlight_text, theme.highlight_background,
+                theme.highlight_text, hlbg,
                 &box
             );
         }
@@ -1034,15 +1057,12 @@ void TokenView::ws_follow_selected()
 
     // Overlap rather than containment: tokenize_words drops leading punctuation, so a
     // word inside «Roma» starts a byte after the link its glyphs sit under.
+    // Follows or does nothing. Nothing is honest here rather than surprising, because a
+    // link is tinted and a selected link takes its own highlight colour -- the reader can
+    // see which words this button acts on before pressing it.
     const LinkRun *link = link_run_overlapping(tl->link_runs, sp.start, sp.end);
     if (link != nullptr && state->on_follow_link)
     {
         state->on_follow_link(link->target);
-        return;
     }
-
-    // Not a link. Look the word up rather than doing nothing: A is the primary button and
-    // a press that produces no response at all reads as the app being broken. Only the
-    // underline distinguishes the two cases, and it is one dim pixel.
-    ws_open_selected();
 }

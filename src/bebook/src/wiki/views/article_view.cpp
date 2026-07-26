@@ -128,7 +128,7 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
 
     // Shown in the bottom bar while a word is selected, which is the one moment the
     // bindings matter more than the article title.
-    state->token_view->set_word_select_hint("A apri   X significato   B esci");
+    state->token_view->set_word_select_hint("A segui   X significato   B esci");
 
     state->token_view->set_on_open_word([this](const std::string &surface) {
         state->view_stack.push(std::make_shared<WordMeaningView>(
