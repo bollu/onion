@@ -458,6 +458,30 @@ std::vector<SearchHit> LexiconService::search(const std::string &query, int max_
     return out;
 }
 
+std::string LexiconService::noun_gender(const std::string &lemma) const
+{
+    if (!impl->db)
+    {
+        return "";
+    }
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(impl->db, "SELECT gender FROM noun_gender WHERE lemma = ?",
+                           -1, &stmt, nullptr) != SQLITE_OK)
+    {
+        // An older DB has no such table. Absent gender is a supported state, so this is
+        // silent rather than an error the caller has to handle.
+        return "";
+    }
+    sqlite3_bind_text(stmt, 1, lemma.c_str(), -1, SQLITE_TRANSIENT);
+    std::string out;
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        out = column_text(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return out;
+}
+
 std::string describe_morphology(const std::string &pos, const std::string &features)
 {
     // Italian grammatical names, to match the conjugation tab labels and what the learner

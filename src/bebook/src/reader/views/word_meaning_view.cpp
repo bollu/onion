@@ -2,6 +2,7 @@
 
 #include "reader/config.h"
 #include "reader/conj_layout.h"
+#include "lexicon/italian_article.h"
 #include "reader/draw_modal_border.h"
 #include "reader/system_styling.h"
 
@@ -343,8 +344,21 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         }
         else if (to_lower(surface) == to_lower(lemma))
         {
-            head = lemma;  // the selection already is the lemma
-            runs.push_back({ 0u, static_cast<uint32_t>(lemma.size()), text::Style::Bold });
+            // The selection already is the headword. A noun shows its article, which is how
+            // a dictionary states gender without an abbreviation to decode; the article is
+            // kept out of the bold run so the word itself still stands out.
+            head = lemma;
+            std::string article;
+            if (active_analysis >= 0 && analyses[active_analysis].lemma.pos == "NOUN")
+            {
+                article = lexicon::definite_article(lemma, lexicon.noun_gender(lemma));
+            }
+            if (!article.empty())
+            {
+                head = (article.back() == '\'') ? article + lemma : article + " " + lemma;
+            }
+            runs.push_back({ static_cast<uint32_t>(head.size() - lemma.size()),
+                             static_cast<uint32_t>(lemma.size()), text::Style::Bold });
         }
         else
         {

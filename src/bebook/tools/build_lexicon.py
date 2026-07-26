@@ -378,12 +378,17 @@ DROP TABLE IF EXISTS defs_it_en;
 DROP TABLE IF EXISTS defs_it_it;
 DROP TABLE IF EXISTS conj;
 DROP TABLE IF EXISTS meta;
+DROP TABLE IF EXISTS noun_gender;
 
 CREATE TABLE forms      (form TEXT NOT NULL, lemma TEXT NOT NULL, pos TEXT, features TEXT, form_fold TEXT);
 CREATE TABLE defs_it_en (lemma TEXT NOT NULL, sense_no INTEGER, gloss TEXT NOT NULL);
 CREATE TABLE defs_it_it (lemma TEXT NOT NULL, sense_no INTEGER, gloss TEXT NOT NULL);
 CREATE TABLE conj       (lemma TEXT NOT NULL, tense TEXT NOT NULL, person INTEGER, form TEXT);
 CREATE TABLE meta       (key TEXT PRIMARY KEY, value TEXT);
+-- Gender of a noun, "m" or "f". Its own table rather than a features value: gender belongs
+-- to the lemma, while forms.features describes one inflected form, and the headword row
+-- carries "base" precisely because it is not inflected.
+CREATE TABLE noun_gender(lemma TEXT PRIMARY KEY, gender TEXT NOT NULL);
 """
 
 INDEXES = """
@@ -708,6 +713,24 @@ def _flush_word(db, word, entries, seen_defs, counters):
                 def_no += 1
                 db.execute("INSERT INTO defs_it_en VALUES (?,?,?)", (lemma, def_no, g))
                 counters["defs"] += 1
+
+    # Gender, from the sense tags kaikki carries on noun entries. It is what a learner has
+    # to memorise per noun and the only way to render "il cane" rather than a bare "cane".
+    # Ambiguous entries (both tags present, e.g. a word used of either sex) are skipped
+    # rather than guessed.
+    noun_genders = set()
+    for e in real:
+        if e.get("pos") != "noun":
+            continue
+        for sense in e.get("senses", []) or []:
+            tags = sense.get("tags") or []
+            if "masculine" in tags:
+                noun_genders.add("m")
+            if "feminine" in tags:
+                noun_genders.add("f")
+    if len(noun_genders) == 1:
+        db.execute("INSERT OR IGNORE INTO noun_gender VALUES (?,?)",
+                   (lemma, next(iter(noun_genders))))
 
     # Forms table (lemmatization): headword + every inflected form, stress-stripped.
     form_rows = set()

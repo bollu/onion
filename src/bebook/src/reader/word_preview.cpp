@@ -2,6 +2,7 @@
 
 #include "dict/match_detail.h"
 #include "lexicon/english_inflect.h"
+#include "lexicon/italian_article.h"
 #include "lexicon/lexicon_service.h"
 
 namespace
@@ -49,6 +50,15 @@ WordPreview summarize_word(const lexicon::LexiconService &lexicon, const std::st
         italian = std::string(lexicon::PERSON_LABELS[person]) + " ";
     }
     italian += surface;
+
+    // A noun gets its article, which is how a dictionary shows gender without a grammatical
+    // abbreviation to decode -- and gender is the one thing a learner has to memorise per
+    // noun. Only on the headword itself: "il cani" would be wrong, and an inflected form is
+    // not what an article agrees with here.
+    if (entry.pos == "NOUN" && surface == lemma)
+    {
+        italian = lexicon::with_article(surface, lexicon.noun_gender(lemma));
+    }
 
     std::string english = gloss;
     if (entry.is_verb() && person >= 0)

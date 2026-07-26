@@ -91,6 +91,12 @@ public:
     // if still thin. Accent-insensitive; deduped and bounded. For search-as-you-type.
     std::vector<SearchHit> search(const std::string &query, int max_results = 40) const;
 
+    // "m" or "f" for a noun whose gender the build could determine, otherwise "". Gender
+    // belongs to the lemma rather than to any one inflected form, so it is not in
+    // LemmaEntry::features -- the headword row there is "base" precisely because it is
+    // uninflected.
+    std::string noun_gender(const std::string &lemma) const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;
