@@ -208,9 +208,12 @@ std::vector<WordMeaningView::BodyItem> WordMeaningView::body_items() const
         case TabKind::Conj:
         {
             const lexicon::ConjTable &t = a.conj[tab.conj_index];
-            for (int i = 0; i < 6; ++i)
+            // Singular beside its plural, so three rows carry all six persons.
+            for (int i = 0; i < 3; ++i)
             {
-                out.push_back({ Kind::Conjugation, lexicon::PERSON_LABELS[i], t.forms[i] });
+                out.push_back({ Kind::Conjugation,
+                                lexicon::PERSON_LABELS[i],     t.forms[i],
+                                lexicon::PERSON_LABELS[i + 3], t.forms[i + 3] });
             }
             break;
         }
@@ -390,7 +393,11 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     }
 
     // --- Tab strip: "◂ [Title] ▸" centred, active title in a filled pill ---------------
-    if (!tabs.empty())
+    //
+    // Drawn only when there is somewhere to cycle to. With one tab it was a pill that
+    // could not be left, a "1/1" counter saying nothing, and a rule -- three lines of
+    // chrome above what is often a one-line answer. That space goes to the body.
+    if (tabs.size() > 1)
     {
         const std::string arrow_l = "\xC2\xAB";  // «  (Latin-1: Charis has it; ◂/▸ tofu)
         const std::string arrow_r = "\xC2\xBB";  // »
@@ -421,12 +428,12 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         int pw = 0;
         text::text_size(font, pos, &pw, nullptr);
         blit_line(dest, font, pos, cx1 - pw, y, theme.secondary_text, theme.background);
-    }
-    y += line_h;
 
-    y += PAD_Y / 2;
-    rule(y);
-    y += 1 + PAD_Y / 2;
+        y += line_h;
+        y += PAD_Y / 2;
+        rule(y);
+        y += 1 + PAD_Y / 2;
+    }
 
     // --- Body -------------------------------------------------------------------------
     const int hint_y = box_y + box_h - PAD_Y - line_h;
@@ -449,6 +456,26 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
         pron_col = std::max(pron_col, w);
     }
     pron_col += PAD_X;
+
+    // Where the plural column starts. Measured from the widest singular form actually on
+    // screen rather than fixed, because compound tenses ("siamo andati") are far wider
+    // than simple ones and would otherwise collide. Clamped so the plural column always
+    // has room even if a form is enormous.
+    int plural_col = 0;
+    {
+        const std::vector<BodyItem> measure_items = body_items();
+        int widest = 0;
+        for (const auto &it : measure_items)
+        {
+            if (it.kind == BodyItem::Kind::Conjugation)
+            {
+                int w = 0;
+                text::text_size(font, it.b.c_str(), &w, nullptr);
+                widest = std::max(widest, w);
+            }
+        }
+        plural_col = std::min(pron_col + widest + PAD_X, cw / 2 + pron_col / 2);
+    }
 
     // Flatten body items into physical lines: prose paragraphs wrap; conjugation and blank
     // items are one line each. `item` indexes back into `items` (not a pointer) so nothing
@@ -510,6 +537,13 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
             const BodyItem &it = items[p.item];
             blit_line(dest, font, it.a, cx0, ry, theme.secondary_text, theme.background);
             blit_line(dest, font, it.b, cx0 + pron_col, ry, theme.main_text, theme.background);
+            if (!it.c.empty())
+            {
+                blit_line(dest, font, it.c, cx0 + plural_col, ry,
+                          theme.secondary_text, theme.background);
+                blit_line(dest, font, it.d, cx0 + plural_col + pron_col, ry,
+                          theme.main_text, theme.background);
+            }
         }
         else
         {
@@ -534,7 +568,19 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
     // --- Hint bar ---------------------------------------------------------------------
     rule(lower_rule_y);
     {
-        std::string hint = "L/R schede   \xE2\x86\x95 scorri   B indietro";
+        // Only advertise what this word actually offers. A noun with one tab and one
+        // analysis has nothing to cycle, and a prompt for a key that does nothing is
+        // worse than no prompt.
+        std::string hint;
+        if (tabs.size() > 1)
+        {
+            hint += "L/R schede   ";
+        }
+        if (max_scroll > 0)
+        {
+            hint += "\xE2\x86\x95 scorri   ";
+        }
+        hint += "B indietro";
         if (analyses.size() > 1)
         {
             hint += "   X analisi";

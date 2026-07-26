@@ -98,9 +98,12 @@ int main(int, char **)
         view_stack.push(std::make_shared<SearchView>(lexicon, sys_styling, view_stack));
     }
 
+    // B is here because it is backspace: holding it to erase a word is the whole point,
+    // and nothing else in this app treats B as a one-shot.
     HeldKeyTracker held_key_tracker({
         SW_BTN_UP, SW_BTN_DOWN, SW_BTN_LEFT, SW_BTN_RIGHT,
         SW_BTN_L1, SW_BTN_R1, SW_BTN_L2, SW_BTN_R2,
+        SW_BTN_B,
     });
     auto key_held_callback = [&view_stack](SDLKey key, uint32_t held_ms) {
         view_stack.on_keyheld(key, held_ms);

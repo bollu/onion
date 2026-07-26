@@ -69,8 +69,13 @@ private:
     struct BodyItem
     {
         enum class Kind { Prose, Conjugation, Blank } kind;
-        std::string a;  // prose text, or the pronoun
-        std::string b;  // the conjugated form
+        std::string a;  // prose text, or the singular pronoun
+        std::string b;  // the singular form
+        // The plural of the same person, laid out beside it: io|noi, tu|voi, lui|loro.
+        // Six persons in three rows rather than six -- the body is five lines, so a
+        // six-row table always hid `loro`, on every tense, with scroll reset each time.
+        std::string c;  // the plural pronoun
+        std::string d;  // the plural form
     };
     std::vector<BodyItem> body_items() const;
 

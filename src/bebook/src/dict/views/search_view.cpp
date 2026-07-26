@@ -58,7 +58,10 @@ SearchView::SearchView(
     , styling_sub_id(styling.subscribe_to_changes([this](SystemStyling::ChangeId) {
           _needs_render = true;
       }))
-    , nav_throttle(250, 90)
+    // 50ms is one frame at TARGET_FPS 20, so this is as fast as the loop allows -- the old
+    // 90ms quantised up to 100ms anyway, which is why 90 and 60 felt identical on device.
+    , nav_throttle(180, 50)
+    , backspace_throttle(300, 60)
 {
 }
 
@@ -192,6 +195,11 @@ void SearchView::on_keyheld(SDLKey key, uint32_t held_time_ms)
         case SW_BTN_LEFT:
         case SW_BTN_RIGHT:
             if (nav_throttle(held_time_ms)) on_keypress(key);
+            break;
+        // Held backspace erases continuously. Its own throttle, because deleting is
+        // easier to overshoot than moving a cursor and wants a beat longer before it runs.
+        case SW_BTN_B:
+            if (backspace_throttle(held_time_ms)) backspace();
             break;
         default:
             break;

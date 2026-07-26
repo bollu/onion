@@ -61,6 +61,7 @@ private:
     bool _is_done = false;
 
     Throttled nav_throttle;
+    Throttled backspace_throttle;
 };
 
 #endif
