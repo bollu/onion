@@ -609,7 +609,7 @@ std::string LexiconService::noun_gender(const std::string &lemma) const
     return out;
 }
 
-std::string describe_morphology(const std::string &pos, const std::string &features)
+std::string pos_name(const std::string &pos)
 {
     // Italian grammatical names, to match the conjugation tab labels and what the learner
     // sees in Italian references.
@@ -618,6 +618,12 @@ std::string describe_morphology(const std::string &pos, const std::string &featu
         {"PRO", "pronome"}, {"PRE", "preposizione"}, {"CON", "congiunzione"},
         {"ART", "articolo"}, {"DET", "determinante"},
     };
+    auto it = POS_NAME.find(pos);
+    return it != POS_NAME.end() ? it->second : pos;
+}
+
+std::string describe_morphology(const std::string &pos, const std::string &features)
+{
     // Tense/mood/non-finite feature codes. The bulk (kaikki) build registers every
     // inflected form for lemmatization, so besides the four surfaced indicative tenses the
     // header may see subjunctive/imperative/past-historic and the non-finite forms. Codes
@@ -632,14 +638,9 @@ std::string describe_morphology(const std::string &pos, const std::string &featu
 
     std::vector<std::string> parts;
 
-    auto pos_it = POS_NAME.find(pos);
-    if (pos_it != POS_NAME.end())
+    if (!pos.empty())
     {
-        parts.push_back(pos_it->second);
-    }
-    else if (!pos.empty())
-    {
-        parts.push_back(pos);
+        parts.push_back(pos_name(pos));
     }
 
     // features are '+'-joined: a tense code then person/number, e.g. "impf+1+s".

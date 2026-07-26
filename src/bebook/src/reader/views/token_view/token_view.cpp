@@ -36,6 +36,10 @@ namespace {
 // cursor moved.
 const int PEEK_LINES = 1;
 
+// How far L1/R1 nudge when the owner has not claimed them. Small on purpose: enough to
+// follow a long paragraph without losing the line you were on.
+const int SHOULDER_NUDGE_LINES = 3;
+
 // Lays out one paragraph with the current font and column.
 //
 // The measurement callback hands the breaker exact 26.6 widths of arbitrary byte ranges.
@@ -173,7 +177,11 @@ struct TokenViewState
     std::string title;
     // Shown in place of the title while a word is selected. Empty leaves the title.
     std::string hint;
-    int title_progress_percent = 0;
+    // Two positions, because they answer different questions: how far through the whole
+    // book, and how far through the section being read. One number could never say both,
+    // which is what the old Progress setting was choosing between.
+    int progress_global_percent = 0;
+    int progress_chapter_percent = 0;
 
     std::function<void(DocAddr)> on_scroll;
 
@@ -204,6 +212,18 @@ struct TokenViewState
     bool has_links = false;
     std::function<void(const std::string &)> on_follow_link;
 
+    // The cursor has come to rest on a link. Its own debounce rather than a share of
+    // `suggest_debounce`: Debounced fires exactly once per armed period, so two consumers
+    // reading one instance race, and whichever asks first silently eats the other's turn.
+    // `dwell_told` is keyed on the target rather than the surface, so two different links
+    // both reading «Roma» each announce themselves.
+    std::function<void(const std::string &)> on_link_dwell;
+    Debounced dwell_debounce{300};
+    std::string dwell_told;
+
+    // What L1/R1 mean here, when the owner has something better than a nudge. -1 is back.
+    std::function<void(int)> on_shoulder_hop;
+
     bool follows_links() const { return has_links; }
 
     // Reading up/down repeats a half-page scroll at a gentle steady rate; the word-select
@@ -223,8 +243,8 @@ struct TokenViewState
     // the trade this app exists to make.
     int num_text_display_lines() const
     {
-        bool show_title_bar = token_view_styling.get_show_title_bar();
-        return num_display_lines() - (show_title_bar ? 1 : 0) - PEEK_LINES;
+        // The title bar always takes a line, the peek panel always takes one.
+        return num_display_lines() - 1 - PEEK_LINES;
     }
 
     // Reading scroll step: half a screen, keeping a few lines of overlap for context.
@@ -240,11 +260,6 @@ struct TokenViewState
 
     int line_pxl_limit_y() const
     {
-        if (!token_view_styling.get_show_title_bar())
-        {
-            return SCREEN_HEIGHT;
-        }
-
         return SCREEN_HEIGHT - line_height - excess_pxl_y() / 2;
     }
 
@@ -466,14 +481,12 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         line_y += line_height;
     }
 
-    // Link backgrounds. Only the wiki reader produces link runs, so this loop costs epubs
+    // Link underlines. Only the wiki reader produces link runs, so this loop costs epubs
     // nothing. Drawn before the word-select highlight, which then sits on top.
-    //
-    // Filled and then redrawn rather than filled under the existing glyphs: the shaded
-    // text path assumes the destination is uniformly the palette's background (see
-    // text_render.h), so drawing over a tint would blend every glyph's antialiasing
-    // toward the theme background and ring it with a halo. Same fill-then-clipped-redraw
-    // idiom as the selection highlight below.
+    const TextLine *sel_tl = nullptr;
+    WordSpan sel_sp{ 0, 0 };
+    const bool have_sel = ws_selected_span(&sel_tl, &sel_sp);
+
     for (int i = 0; i < num_text_display_lines; ++i)
     {
         const DisplayLine *line = state->line_scroller.get_line_relative(i);
@@ -489,8 +502,6 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
 
         const Sint16 box_y = static_cast<Sint16>(text_top + i * line_height);
-        const auto &lbg = theme.link_background;
-        const Uint32 fill = SDL_MapRGB(dest_surface->format, lbg.r, lbg.g, lbg.b);
 
         for (const auto &link : tl->link_runs)
         {
@@ -503,24 +514,28 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 continue;
             }
 
-            const int pad = 2;
-            SDL_Rect box = {
-                static_cast<Sint16>(lb.x0 - pad),
-                box_y,
-                static_cast<Uint16>((lb.x1 - lb.x0) + 2 * pad),
-                static_cast<Uint16>(line_height)
-            };
-            SDL_FillRect(dest_surface, &box, fill);
+            // A link is underlined, not boxed. The box is what "the cursor is here" means,
+            // and spending it on "this could be followed" made a page of links look like a
+            // page of selections -- two different facts wearing one costume. An underline
+            // is the older and more literal convention, it leaves the glyphs untouched
+            // (no fill, so no redraw to avoid haloing the antialiasing), and it stacks:
+            // the selected link keeps its box *and* thickens its rule.
+            const bool selected =
+                have_sel && sel_tl == tl
+                && link.offset < sel_sp.end
+                && sel_sp.start < link.offset + link.length;
 
-            text::StyledText styled = styled_for(tl, font);
-            const int indent = line_indent(font, tl);
-            text::draw_line_aligned(
-                dest_surface, styled, as_text_line(tl),
-                margin_x + indent, state->text_width() - indent,
-                box_y + leading_above + ascent, line_align(tl),
-                theme.main_text, theme.link_background,
-                &box
-            );
+            const auto &c = selected ? theme.link_highlight_background : theme.link_background;
+            const int thickness = selected ? 3 : 1;
+
+            SDL_Rect rule = {
+                static_cast<Sint16>(lb.x0),
+                static_cast<Sint16>(box_y + leading_above + ascent + 2),
+                static_cast<Uint16>(lb.x1 - lb.x0),
+                static_cast<Uint16>(thickness)
+            };
+            SDL_FillRect(dest_surface, &rule,
+                         SDL_MapRGB(dest_surface->format, c.r, c.g, c.b));
         }
     }
 
@@ -573,7 +588,9 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                     state->ws_preview = state->on_word_preview(surface);
                     // A new word: restart the quiet period, so a cursor still moving asks
                     // for nothing.
-                    state->suggest_debounce.poke(SDL_GetTicks());
+                    const uint32_t now = SDL_GetTicks();
+                    state->suggest_debounce.poke(now);
+                    state->dwell_debounce.poke(now);
                 }
 
                 if (state->on_word_unknown && state->ws_preview.glosses.empty()
@@ -593,6 +610,21 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                             state->ws_preview.grammar = text;
                             state->needs_render = true;
                         });
+                }
+            }
+
+            // The beat between landing on a link and pressing X is free time. Announcing it
+            // lets the owner have the article ready before the button, which is the whole
+            // difference between a follow that draws immediately and one that stops to read
+            // the card. Same settle rule as the suggestion: sweeping past a link says
+            // nothing, resting on one says it once.
+            if (state->on_link_dwell && state->dwell_debounce(SDL_GetTicks()))
+            {
+                const LinkRun *link = link_run_overlapping(tl->link_runs, sp.start, sp.end);
+                if (link != nullptr && link->target != state->dwell_told)
+                {
+                    state->dwell_told = link->target;
+                    state->on_link_dwell(link->target);
                 }
             }
 
@@ -637,8 +669,8 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
     }
 
     // The title bar keeps its own line at the bottom; the peek panel has its own at the
-    // top, so the two no longer compete for one.
-    if (state->token_view_styling.get_show_title_bar())
+    // top, so the two no longer compete for one. Always drawn: it carries the breadcrumb,
+    // and a reader who cannot see where they are is lost in a way no saved pixel repays.
     {
         // Recompute for short book case
         line_y = text_top + num_text_display_lines * line_height;
@@ -699,22 +731,11 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             }
         }
 
-        // Progress
-        {
-            char percent_str[32];
-            snprintf(percent_str, sizeof(percent_str), " %d%%", state->title_progress_percent);
-
-            int percent_w = 0;
-            text::text_size(font, percent_str, &percent_w, nullptr);
-
-            text::draw_text(
-                dest_surface, font, percent_str,
-                SCREEN_WIDTH - percent_w - margin_x - battery_w, title_baseline,
-                theme.secondary_text, theme.background
-            );
-
-            title_crop_rect.w = SCREEN_WIDTH - margin_x * 2 - percent_w - battery_w;
-        }
+        // No percentage here any more: the two margin bars say where we are, and better --
+        // continuously, and without asking the eye to read a number. The width it used to
+        // reserve goes back to the title, which on a wiki is a breadcrumb and wants every
+        // pixel it can get.
+        title_crop_rect.w = SCREEN_WIDTH - margin_x * 2 - battery_w;
 
         // Title, or what the buttons do, when the owner has set a hint.
         const std::string &bar_text = !state->hint.empty() ? state->hint : state->title;
@@ -825,22 +846,36 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
     }
 
-    // A thin vertical progress bar on the right edge: how far through the book we are, always
-    // visible and unobtrusive like a scrollbar. It sits in the right margin, clear of the text,
-    // filling from the top in proportion to reading progress over a dim full-height track.
+    // Two vertical progress bars, one down each margin: left is the whole book or article,
+    // right is the section being read. Unobtrusive like scrollbars, and always present, so
+    // position is something you glance at rather than something you ask for. They live in
+    // the margins (TEXT_MARGIN_X is 28) and never touch the text.
     {
-        const int bar_w = 2;
-        const Sint16 x = static_cast<Sint16>(SCREEN_WIDTH - bar_w);
-        const int pct = std::max(0, std::min(100, state->title_progress_percent));
-        const int filled = SCREEN_HEIGHT * pct / 100;
+        const int bar_w = 5;
 
-        SDL_Rect track = {x, 0, (Uint16)bar_w, (Uint16)SCREEN_HEIGHT};
-        SDL_FillRect(dest_surface, &track,
-            SDL_MapRGB(dest_surface->format, theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b));
+        // A fill of zero would read as a broken bar exactly when you most need to know the
+        // bar is there, so the thumb never shrinks below this.
+        const int min_fill = 14;
 
-        SDL_Rect fill = {x, 0, (Uint16)bar_w, (Uint16)filled};
-        SDL_FillRect(dest_surface, &fill,
-            SDL_MapRGB(dest_surface->format, theme.main_text.r, theme.main_text.g, theme.main_text.b));
+        const Uint32 track_c = SDL_MapRGB(dest_surface->format, theme.secondary_text.r,
+                                          theme.secondary_text.g, theme.secondary_text.b);
+        const Uint32 fill_c = SDL_MapRGB(dest_surface->format, theme.main_text.r,
+                                         theme.main_text.g, theme.main_text.b);
+
+        auto draw_bar = [&](Sint16 x, int percent) {
+            const int pct = std::max(0, std::min(100, percent));
+            const int filled = std::max(min_fill, SCREEN_HEIGHT * pct / 100);
+
+            SDL_Rect track = { x, 0, (Uint16)bar_w, (Uint16)SCREEN_HEIGHT };
+            SDL_FillRect(dest_surface, &track, track_c);
+
+            SDL_Rect fill = { x, 0, (Uint16)bar_w,
+                              (Uint16)std::min(filled, static_cast<int>(SCREEN_HEIGHT)) };
+            SDL_FillRect(dest_surface, &fill, fill_c);
+        };
+
+        draw_bar(0, state->progress_global_percent);
+        draw_bar(static_cast<Sint16>(SCREEN_WIDTH - bar_w), state->progress_chapter_percent);
     }
 
     return true;
@@ -899,24 +934,38 @@ void TokenView::scroll(int num_lines)
 
 void TokenView::on_keypress(SDLKey key)
 {
-    // Either shoulder pair jumps half a page: left back, right forward. Both pairs rather
-    // than the one the shoulder keymap selects, because paging is now all the shoulders do
-    // -- binding only the chosen pair would leave the other two buttons dead, where before
-    // any of the four entered word-select.
+    // The two shoulder pairs do different jobs, which they can because they are distinct
+    // keys (sys/keymap.h) and both pairs used to do the same thing.
     //
-    // The d-pad drives the cursor, which is what freed the shoulders for this. A page jump
-    // moves the cursor half a page and lets the camera follow, so it is the same rule as
-    // every other move rather than a second kind of scrolling.
+    // L2/R2 jump half a page. L1/R1 belong to the owner if it wants them -- the wiki walks
+    // its breadcrumb -- and otherwise nudge by a few lines. A few lines rather than a page
+    // because the point is to keep your place: the text moves under you a little and the
+    // sentence you were reading is still on screen, where a page jump makes you find your
+    // way again. Everything here still moves the cursor and lets the camera follow, so
+    // there is one rule for how the page moves.
     switch (key)
     {
-        case SW_BTN_L1:
         case SW_BTN_L2:
             ws_page(-1);
             return;
-        case SW_BTN_R1:
         case SW_BTN_R2:
             ws_page(1);
             return;
+        case SW_BTN_L1:
+        case SW_BTN_R1:
+        {
+            const int dir = (key == SW_BTN_L1) ? -1 : 1;
+            if (state->on_shoulder_hop)
+            {
+                state->on_shoulder_hop(dir);
+                return;
+            }
+            for (int i = 0; i < SHOULDER_NUDGE_LINES; ++i)
+            {
+                ws_move_line(dir);
+            }
+            return;
+        }
         default:
             break;
     }
@@ -1006,11 +1055,13 @@ void TokenView::set_title(const std::string &title)
     }
 }
 
-void TokenView::set_title_progress(int percent)
+void TokenView::set_progress(int global_percent, int chapter_percent)
 {
-    if (percent != state->title_progress_percent)
+    if (global_percent != state->progress_global_percent
+        || chapter_percent != state->progress_chapter_percent)
     {
-        state->title_progress_percent = percent;
+        state->progress_global_percent = global_percent;
+        state->progress_chapter_percent = chapter_percent;
         state->needs_render = true;
     }
 }
@@ -1046,6 +1097,16 @@ void TokenView::set_follows_links(bool follows)
 void TokenView::set_on_follow_link(std::function<void(const std::string &)> callback)
 {
     state->on_follow_link = std::move(callback);
+}
+
+void TokenView::set_on_link_dwell(std::function<void(const std::string &)> callback)
+{
+    state->on_link_dwell = std::move(callback);
+}
+
+void TokenView::set_on_shoulder_hop(std::function<void(int)> callback)
+{
+    state->on_shoulder_hop = std::move(callback);
 }
 
 int TokenView::scroll_reporting(int n)

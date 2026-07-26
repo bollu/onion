@@ -17,6 +17,9 @@ class SelectionMenu: public View
     bool needs_render = true;
 
     std::vector<std::string> entries;
+    // Optional, parallel to `entries`. Empty means a flat list, which is how every menu but
+    // the table of contents wants to be drawn -- so those lay out exactly as before.
+    std::vector<uint32_t> levels;
     // Optional. When set, a header row shows it plus the cursor position, and the list
     // loses one row to make space. Menus that set no title lay out exactly as before.
     std::string title;
@@ -50,6 +53,10 @@ public:
     virtual ~SelectionMenu();
 
     void set_entries(std::vector<std::string> new_entries);
+
+    // Nesting depth per entry, 0 for top level. Must be the same length as the entries or
+    // it is ignored; a short list would silently mis-indent the tail.
+    void set_levels(std::vector<uint32_t> new_levels);
 
     // Names the list and shows the cursor position. Without one, several full-screen
     // menus are indistinguishable, and nothing says how far the list runs or whether B

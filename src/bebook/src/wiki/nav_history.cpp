@@ -49,4 +49,38 @@ const std::vector<HistoryEntry> &NavHistory::entries() const
 void NavHistory::clear()
 {
     stack.clear();
+    forward.clear();
+}
+
+void NavHistory::push_forward(HistoryEntry entry)
+{
+    forward.push_back(std::move(entry));
+
+    // Same bound as the back stack, and for the same reason.
+    if (forward.size() > max_depth)
+    {
+        forward.erase(forward.begin(), forward.begin() + (forward.size() - max_depth));
+    }
+}
+
+bool NavHistory::can_go_forward() const
+{
+    return !forward.empty();
+}
+
+const HistoryEntry &NavHistory::peek_forward() const
+{
+    return forward.back();
+}
+
+HistoryEntry NavHistory::pop_forward()
+{
+    HistoryEntry entry = forward.back();
+    forward.pop_back();
+    return entry;
+}
+
+void NavHistory::clear_forward()
+{
+    forward.clear();
 }

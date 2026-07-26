@@ -42,9 +42,23 @@ public:
     const std::vector<HistoryEntry> &entries() const;
     void clear();
 
+    // Forward, in the ordinary browser sense: stepping back remembers what you stepped out
+    // of, and following any new link forgets it. Exists because walking a breadcrumb with
+    // L1/R1 only makes sense in both directions -- back alone is what B already does.
+    //
+    // The caller records the departure, because only it knows the address it is leaving at.
+    void push_forward(HistoryEntry entry);
+    bool can_go_forward() const;
+    const HistoryEntry &peek_forward() const;
+    HistoryEntry pop_forward();
+
+    // Following a new link invalidates the forward trail, exactly as in a browser.
+    void clear_forward();
+
 private:
     const size_t max_depth;
     std::vector<HistoryEntry> stack;
+    std::vector<HistoryEntry> forward;
 };
 
 #endif

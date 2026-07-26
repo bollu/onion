@@ -54,8 +54,7 @@ void dump_reader(const std::string &zim_path, const std::string &article,
     {
         styling.set_color_theme(theme);
     }
-    TokenViewStyling token_styling(DEFAULT_SHOW_PROGRESS, DEFAULT_PROGRESS_REPORTING,
-                                   DEFAULT_JUSTIFY, DEFAULT_HYPHENATE);
+    TokenViewStyling token_styling(DEFAULT_JUSTIFY, DEFAULT_HYPHENATE);
 
     lexicon::LexiconService lexicon(LEXICON_DB_PATH);
     if (!lexicon.ok())

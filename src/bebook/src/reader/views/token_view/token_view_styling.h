@@ -15,16 +15,13 @@ class TokenViewStyling
     void notify_subscribers() const;
 
 public:
-    TokenViewStyling(bool show_title_bar, ProgressReporting progress_reporting, bool justify, bool hyphenate);
+    TokenViewStyling(bool justify, bool hyphenate);
     virtual ~TokenViewStyling();
 
-    // Title bar
-    bool get_show_title_bar() const;
-    void set_show_title_bar(bool show_title_bar);
-
-    // Progress reporting
-    ProgressReporting get_progress_reporting() const;
-    void set_progress_reporting(ProgressReporting progress_reporting);
+    // The title bar is no longer optional and progress is no longer a choice: the bar
+    // carries the breadcrumb, which is the reader's position in the archive, and the two
+    // margin bars show book *and* chapter progress at once. Both settings existed to pick
+    // one of two things to show; showing both made the question go away.
 
     // Justification. Changing either of these invalidates the laid-out lines, so the
     // view re-runs the paragraph breaker rather than just repainting.

@@ -70,7 +70,9 @@ public:
     // have taken theirs. For callers that compose the title to fit -- the wiki breadcrumb
     // decides what to drop, and needs the same number render will crop to.
     int title_text_width() const;
-    void set_title_progress(int percent);
+    // Where the reader is, as two percentages: through the whole document, and through the
+    // current chapter or section. Drawn as the two margin bars, not as text.
+    void set_progress(int global_percent, int chapter_percent);
 
     // Replaces the title in the bottom bar. Empty leaves the title showing.
     void set_word_select_hint(const std::string &hint);
@@ -103,6 +105,17 @@ public:
 
     // Called with a link target when X is pressed on a word that overlaps one.
     void set_on_follow_link(std::function<void(const std::string &)> callback);
+
+    // Called once when the cursor comes to rest on a link, before any button is pressed --
+    // the owner's chance to have the target ready by the time X arrives. Advisory: the
+    // reader may never press it, so whatever this triggers must be droppable and must not
+    // cost a frame. Sweeping past links announces nothing.
+    void set_on_link_dwell(std::function<void(const std::string &)> callback);
+
+    // Claim L1/R1 (-1 is back, +1 forward). Unclaimed they nudge the page a few lines,
+    // which is what a book wants; the wiki claims them to walk its breadcrumb. L2/R2 always
+    // jump half a page and are not claimable.
+    void set_on_shoulder_hop(std::function<void(int)> callback);
 };
 
 #endif

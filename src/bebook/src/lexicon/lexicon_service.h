@@ -128,6 +128,14 @@ std::string abbreviate_morphology(const std::string &pos, const std::string &fea
 // the features name no tense (a noun, a bare headword).
 std::string tense_name_for_features(const std::string &features);
 
+// The part of speech in Italian: "verbo", "sostantivo", "aggettivo". An unrecognised code is
+// returned as it came, so a lexicon built with tags we do not know still says something.
+//
+// The popup header wants this on its own: the tense tells you what *this form* is, the part
+// of speech tells you what the *word* is, and a headword with no inflection ("bello") has
+// only the second to show.
+std::string pos_name(const std::string &pos);
+
 // The indicative tense a surface form implies, as a ConjTable::tense key. "faccio"
 // ("pres+1+s") should open on the present rather than whatever sorts first. Falls back to
 // "presente" for infinitives, moods with no table, and anything unrecognised.

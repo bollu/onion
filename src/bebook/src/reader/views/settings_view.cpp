@@ -83,14 +83,6 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
             line_selected == 2 ? style_hl : style_normal
         );
 
-        auto progress_label = render_text("Progress:", style_label);
-        auto progress_value = render_text(
-            token_view_styling.get_progress_reporting() == ProgressReporting::CHAPTER_PERCENT ?
-            "Chapter %" :
-            "Book %",
-            line_selected == 3 ? style_hl : style_normal
-        );
-
         Uint16 content_w;
         {
             int arrow_w = left_arrow->w + right_arrow->w;
@@ -101,13 +93,11 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
                 font_name_value->w + arrow_w,
                 shoulder_keymap_label->w,
                 shoulder_keymap_value->w + arrow_w,
-                progress_label->w,
-                progress_value->w + arrow_w
             };
             content_w = *std::max_element(widths.begin(), widths.end());
         }
 
-        int num_menu_items = 4;
+        int num_menu_items = 3;
         Uint16 text_padding = 5;
         Uint16 max_content_h = SCREEN_HEIGHT - DIALOG_BORDER_WIDTH * 2;
         Uint16 line_height = font_size_label->h + font_size_value->h;
@@ -189,11 +179,6 @@ bool SettingsView::render(SDL_Surface *dest_surface, bool force_render)
                 rect.y += text_padding;
             }
 
-            if (is_line_shown(3))
-            {
-                push_text(progress_label.get());
-                push_text(progress_value.get(), line_selected == 3);
-            }
         }
 
         needs_render = false;
@@ -243,13 +228,6 @@ void SettingsView::on_change_shoulder_keymap(int dir)
     );
 }
 
-void SettingsView::on_change_progress()
-{
-    token_view_styling.set_progress_reporting(
-        get_next_progress_reporting(token_view_styling.get_progress_reporting())
-    );
-}
-
 void SettingsView::on_keypress(SDLKey key)
 {
     switch (key) {
@@ -273,13 +251,9 @@ void SettingsView::on_keypress(SDLKey key)
                 {
                     on_change_font_name(dir);
                 }
-                else if (line_selected == 2)
-                {
-                    on_change_shoulder_keymap(dir);
-                }
                 else
                 {
-                    on_change_progress();
+                    on_change_shoulder_keymap(dir);
                 }
                 needs_render = true;
             }

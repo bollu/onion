@@ -84,12 +84,14 @@ void open_toc_menu(ReaderView &reader_view, ReaderViewState &state)
         return;
     }
 
-    // setup toc entries & callbacks
+    // setup toc entries & callbacks. Depth goes through as depth rather than as leading
+    // spaces, so the menu can indent by the font's own measure and dim the subsections.
     std::vector<std::string> menu_names;
+    std::vector<uint32_t> menu_levels;
     for (const auto &toc_item: toc)
     {
-        std::string indent(toc_item.indent_level * 2, ' ');
-        menu_names.push_back(indent + toc_item.display_name);
+        menu_names.push_back(toc_item.display_name);
+        menu_levels.push_back(toc_item.indent_level);
     }
 
     auto current_toc_index = state.reader->get_toc_position(get_current_address(state)).toc_index;
@@ -97,6 +99,7 @@ void open_toc_menu(ReaderView &reader_view, ReaderViewState &state)
         menu_names,
         state.sys_styling
     );
+    toc_select_menu->set_levels(menu_levels);
     toc_select_menu->set_on_selection([&reader_view, last_toc_index=current_toc_index](uint32_t toc_index) {
         if (toc_index != last_toc_index)
         {
@@ -205,12 +208,16 @@ void ReaderView::update_token_view_title(DocAddr address)
         state->token_view->set_title(state->filename);
     }
 
-    uint32_t progress_percent = (
-        state->token_view_styling.get_progress_reporting() == ProgressReporting::CHAPTER_PERCENT ?
-        toc_position.progress_percent :
-        state->reader->get_global_progress_percent(address)
-    );
-    state->token_view->set_title_progress(progress_percent);
+    // Both, now that there are two bars to put them in: left is the whole book, right is
+    // this chapter. Outside a chapter the right bar tracks the book, which is honest --
+    // there is no section to be part-way through.
+    const uint32_t global_pct = state->reader->get_global_progress_percent(address);
+    const uint32_t chapter_pct = toc_position.toc_index < toc.size()
+                                     ? toc_position.progress_percent
+                                     : global_pct;
+
+    state->token_view->set_progress(static_cast<int>(global_pct),
+                                    static_cast<int>(chapter_pct));
 }
 
 bool ReaderView::render(SDL_Surface *dest_surface, bool force_render)

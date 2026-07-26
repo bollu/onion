@@ -7,6 +7,15 @@
 #include "reader/system_styling.h"
 #include "util/sdl_utils.h"
 
+#include <algorithm>
+
+namespace
+{
+// Deep nesting must not walk the text off the right edge, and past two or three levels the
+// indent has said all it can anyway.
+const uint32_t MAX_INDENT_LEVELS = 3;
+}
+
 uint32_t SelectionMenu::num_display_lines() const
 {
     const uint32_t lines = SCREEN_HEIGHT / line_height;
@@ -57,7 +66,19 @@ SelectionMenu::~SelectionMenu()
 void SelectionMenu::set_entries(std::vector<std::string> new_entries)
 {
     entries = new_entries;
+    // New entries invalidate the old depths; a caller that wants indentation sets it after.
+    levels.clear();
     set_cursor_pos(0);
+    needs_render = true;
+}
+
+void SelectionMenu::set_levels(std::vector<uint32_t> new_levels)
+{
+    if (new_levels.size() != entries.size())
+    {
+        return;
+    }
+    levels = std::move(new_levels);
     needs_render = true;
 }
 
@@ -213,6 +234,16 @@ bool SelectionMenu::render(SDL_Surface *dest_surface, bool force_render)
 
         bool is_highlighted = (global_i == cursor_pos);
 
+        // Depth, when the owner supplied any. A table of contents is a tree that was being
+        // drawn as a list, which is why it read as undifferentiated: the shape was parsed
+        // and then thrown away here. Indent carries it, and a dimmer colour lets the
+        // top-level entries be found without reading them.
+        const uint32_t level = global_i < levels.size() ? levels[global_i] : 0;
+        const Sint16 indent = static_cast<Sint16>(
+            std::min(level, MAX_INDENT_LEVELS) * loaded_font->size_px);
+        const SDL_Color &row_fg =
+            is_highlighted ? hl_text_color : (level > 0 ? theme.secondary_text : fg_color);
+
         // Draw hightlight
         if (is_highlighted)
         {
@@ -223,14 +254,14 @@ bool SelectionMenu::render(SDL_Surface *dest_surface, bool force_render)
         // Draw text
         {
             SDL_Rect rectMessage = {
-                x,
+                static_cast<Sint16>(x + indent),
                 static_cast<Sint16>(y + line_padding / 2),
                 0, 0
             };
             auto message = surface_unique_ptr { text::render_text_shaded(
                 loaded_font,
                 entry.c_str(),
-                is_highlighted ? hl_text_color : fg_color,
+                row_fg,
                 is_highlighted ? hl_bg_color : bg_color
             ) };
             SDL_BlitSurface(message.get(), NULL, dest_surface, &rectMessage);

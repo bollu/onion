@@ -32,6 +32,7 @@
 #include "gs_keystate.h"
 #include "gs_overlay.h"
 #include "gs_render.h"
+#include "gs_warm.h"
 
 int main(int argc, char *argv[])
 {
@@ -93,6 +94,11 @@ int main(int argc, char *argv[])
         }
 
         handleKeystate(&appState);
+
+        // Before the render block, which is where current_game_changed is consumed: this
+        // needs to see the move that just happened, so a cursor in flight keeps resetting
+        // the dwell and only a cursor that stops triggers a warm.
+        warm_tick(appState.current_game, appState.current_game_changed, ticks);
 
         if (battery_hasChanged(ticks, &battery_percentage))
             appState.changed = true;

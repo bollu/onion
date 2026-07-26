@@ -278,6 +278,17 @@ TEST(LexiconService, SearchIsDedupedAndSafe)
     for (const auto &h : r) EXPECT_TRUE(seen.insert({h.word, h.lemma}).second);
 }
 
+TEST(PosName, NamesThePartOfSpeechInItalian)
+{
+    EXPECT_EQ(pos_name("NOUN"), "sostantivo");
+    EXPECT_EQ(pos_name("VER"), "verbo");
+    EXPECT_EQ(pos_name("ADJ"), "aggettivo");
+    // A tag from a lexicon built with codes we do not know still says something, rather
+    // than the popup header silently losing its parenthetical.
+    EXPECT_EQ(pos_name("INTJ"), "INTJ");
+    EXPECT_EQ(pos_name(""), "");
+}
+
 TEST(DescribeMorphology, RendersGenderAndNumber)
 {
     EXPECT_EQ(describe_morphology("NOUN", "pl"), "sostantivo \xC2\xB7 plurale");

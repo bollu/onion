@@ -162,6 +162,9 @@ void ArticleSearchView::on_keypress(SDLKey key)
                 impl->on_open(path);
             }
             break;
+        // Y opened this screen from the article, so Y closes it again. A button that only
+        // goes one way makes the reader hunt for the way back.
+        case SW_BTN_Y:
         case SW_BTN_START:
             impl->done = true;
             break;
@@ -258,7 +261,7 @@ bool ArticleSearchView::render(SDL_Surface *dest, bool force_render)
     // dictionary's cannot drift apart -- they are used minutes apart.
     const ui::KeyboardBox kb_box = ui::keyboard_box(cx0, cx1, line_h, 8);
 
-    ui::draw_key_hint(dest, "A scrivi  B canc.  L/R risultati  X apri  START esci",
+    ui::draw_key_hint(dest, "A scrivi  B canc.  L/R risultati  X apri  Y torna",
                       cx0, cx1, kb_box.top - line_h,
                       impl->styling.get_font_size(), font, theme);
 

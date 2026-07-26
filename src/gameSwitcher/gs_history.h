@@ -166,7 +166,15 @@ void launchPinnedApp(Game_s *game)
 
     remove("/mnt/SDCARD/.tmp_update/.runGameSwitcher");
     file_put_sync(fp, CMD_TO_RUN_PATH, "%s", launchCommand);
-    sync();
+
+    // No global sync() here, unlike resumeGame(). file_put_sync already fflush'd and
+    // fsync'd this file, so the command runtime.sh is about to read is durably on disk; a
+    // sync() would add nothing to that. What it *would* add is a wait for every dirty page
+    // on the system -- including whatever the app we just left wrote on its way out -- at
+    // the exact moment the user is staring at a black screen waiting for the next app.
+    //
+    // Left in place in resumeGame() (common/system/state.h), which is upstream and shared
+    // with paths this change has no business touching.
 }
 
 /**

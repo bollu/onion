@@ -18,7 +18,11 @@ namespace zim
 class ArticleCache
 {
 public:
-    explicit ArticleCache(uint32_t capacity = 3);
+    // Room for the article being read, a couple of steps of back-history, and the link the
+    // cursor is resting on -- prefetching into a cache of three would evict the history it
+    // exists to protect. The largest article in the Italian corpus parses to ~276 KB of
+    // text, so the extra slots cost single-digit megabytes on a 128 MB device.
+    explicit ArticleCache(uint32_t capacity = 5);
 
     // Never null on success. Returns null if the path is absent or unparseable.
     std::shared_ptr<const WikiArticle> get_or_parse(ZimFile &zim, const std::string &path);

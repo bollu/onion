@@ -339,51 +339,84 @@ bool WordMeaningView::render(SDL_Surface *dest, bool force_render)
                                                  : std::string();
         std::string head;
         std::vector<text::StyleRun> runs;
-        if (lemma.empty())
-        {
-            head = surface;
-        }
-        else if (to_lower(surface) == to_lower(lemma))
-        {
-            // The selection already is the headword. A noun shows its article, which is how
-            // a dictionary states gender without an abbreviation to decode; the article is
-            // kept out of the bold run so the word itself still stands out.
-            head = lemma;
-            std::string article;
-            if (active_analysis >= 0 && analyses[active_analysis].lemma.pos == "NOUN")
+
+        // The part of speech and the tense answer different questions -- what the *word* is
+        // versus what *this form* is -- so the header carries both, and a headword with no
+        // inflection ("bello") still gets the one it has. Built as a function of `with_pos`
+        // because the long moods overrun the line and the fix is to drop the part of speech
+        // rather than truncate: a pronoun and a tense already imply a verb, whereas a cut
+        // word implies nothing.
+        auto build_head = [&](bool with_pos) {
+            head.clear();
+            runs.clear();
+            const std::string pos =
+                (active_analysis >= 0 && with_pos)
+                    ? lexicon::pos_name(analyses[active_analysis].lemma.pos)
+                    : std::string();
+
+            if (lemma.empty())
             {
-                article = lexicon::definite_article(lemma, lexicon.noun_gender(lemma));
+                head = surface;
+                return;
             }
-            if (!article.empty())
+
+            if (to_lower(surface) == to_lower(lemma))
             {
-                head = (article.back() == '\'') ? article + lemma : article + " " + lemma;
+                // The selection already is the headword. A noun shows its article, which is
+                // how a dictionary states gender without an abbreviation to decode; the
+                // article is kept out of the bold run so the word itself still stands out.
+                head = lemma;
+                std::string article;
+                if (active_analysis >= 0 && analyses[active_analysis].lemma.pos == "NOUN")
+                {
+                    article = lexicon::definite_article(lemma, lexicon.noun_gender(lemma));
+                }
+                if (!article.empty())
+                {
+                    head = (article.back() == '\'') ? article + lemma : article + " " + lemma;
+                }
+                runs.push_back({ static_cast<uint32_t>(head.size() - lemma.size()),
+                                 static_cast<uint32_t>(lemma.size()), text::Style::Bold });
+                // Appended after the run, so the offsets above still address the lemma.
+                if (!pos.empty())
+                {
+                    head += " (" + pos + ")";
+                }
+                return;
             }
-            runs.push_back({ static_cast<uint32_t>(head.size() - lemma.size()),
-                             static_cast<uint32_t>(lemma.size()), text::Style::Bold });
-        }
-        else
-        {
-            // "lui/lei volle (passato remoto) → volere": the form as it appeared, said the
-            // way a learner needs to hear it, then the dictionary form it resolves to. The
-            // person and tense used to sit on a line of their own below, which made the
-            // header three lines to say what fits in one.
+
+            // "lui/lei volle (verbo · passato remoto) → volere": the form as it appeared,
+            // said the way a learner needs to hear it, then the dictionary form it resolves
+            // to. The person and tense used to sit on a line of their own below, which made
+            // the header three lines to say what fits in one.
             const auto &entry = analyses[active_analysis].lemma;
             const int person = lexicon::person_index_for_features(entry.features);
             const std::string tense = lexicon::tense_name_for_features(entry.features);
 
-            head.clear();
             if (person >= 0)
             {
                 head += std::string(lexicon::PERSON_LABELS[person]) + " ";
             }
             head += surface;
+
+            std::string paren = pos;
             if (!tense.empty())
             {
-                head += " (" + tense + ")";
+                paren += paren.empty() ? tense : " \xC2\xB7 " + tense;  // ·
+            }
+            if (!paren.empty())
+            {
+                head += " (" + paren + ")";
             }
             head += " \xE2\x86\x92 " + lemma;  // ->
             runs.push_back({ static_cast<uint32_t>(head.size() - lemma.size()),
                              static_cast<uint32_t>(lemma.size()), text::Style::Bold });
+        };
+
+        build_head(true);
+        if (text::elide_to_width(font, head, cw) != head)
+        {
+            build_head(false);
         }
 
         // The header gets the whole width. It used to share the line with the gloss, which

@@ -68,7 +68,11 @@ private:
     // Records where to go and moves the machine to NavigationQueued. The move itself waits
     // for perform_queued_navigation, because following a link is reported from inside the
     // TokenView that the move destroys.
-    void queue_navigation(const std::string &path, DocAddr address, nav::Event cause);
+    void queue_navigation(const std::string &path, DocAddr address, nav::Event cause,
+                          bool is_forward = false);
+
+    // Retrace a step undone by B. False when there is nothing to go forward to.
+    bool go_forward();
     void perform_queued_navigation();
 
     void update_title(DocAddr address);

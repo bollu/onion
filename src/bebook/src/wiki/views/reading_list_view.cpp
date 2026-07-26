@@ -36,6 +36,7 @@ struct ReadingListViewState
 
     bool is_done = false;
     std::function<void()> on_search;
+    std::string archive_name;
 
     ReadingListViewState(std::vector<ReadingListSection> sections,
                          SystemStyling &styling,
@@ -105,7 +106,12 @@ void ReadingListView::show_sections()
             }
         }
     }
-    state->menu->set_title("Letture  " + std::to_string(read) + " lette");
+    std::string header = "Letture  " + std::to_string(read) + " lette";
+    if (!state->archive_name.empty())
+    {
+        header += "  \xC2\xB7  " + state->archive_name;  // ·
+    }
+    state->menu->set_title(header);
 
     state->menu->set_cursor_pos(state->section_cursor);
 }
@@ -243,4 +249,11 @@ void ReadingListView::refresh_section_menu()
 void ReadingListView::set_on_search(std::function<void()> callback)
 {
     state->on_search = std::move(callback);
+}
+
+void ReadingListView::set_archive_name(const std::string &name)
+{
+    state->archive_name = name;
+    // Rebuild the header now, since the name usually arrives just after construction.
+    show_sections();
 }

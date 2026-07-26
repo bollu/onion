@@ -23,6 +23,49 @@
 
 #include <utility>
 
+namespace
+{
+
+// Parse the article the cursor is resting on, so pressing X finds it already in the shared
+// ArticleCache and navigate_to becomes a lookup.
+//
+// This is the one thing on the device that visibly stops: following a link pays an SD read,
+// a zlib inflate and a full libxml DOM parse inside the keypress handler, before anything
+// can be drawn. None of that gets faster here. It just happens while the reader is deciding
+// rather than after they have decided, which is the whole difference.
+//
+// Deliberately indivisible: libxml parses a document or it does not, so this cannot honour a
+// budget mid-parse. What it can do is refuse to *start* without room, so a prefetch never
+// competes with a frame that is already late -- and if the reader presses X first, they are
+// no worse off than before, because that is exactly the old behaviour.
+class PrefetchArticleJob : public SlicedJob
+{
+public:
+    PrefetchArticleJob(std::shared_ptr<WikiContext> context, std::string path)
+        : context(std::move(context)), path(std::move(path))
+    {
+    }
+
+    bool step(Budget &budget) override
+    {
+        if (budget.spent())
+        {
+            return false;
+        }
+        // The reader is discarded; the parsed article it pulled stays in the context's
+        // cache, which is the entire point. A failure needs no handling -- the real
+        // navigation will fail the same way and report it.
+        context->open_article(path);
+        return true;
+    }
+
+private:
+    std::shared_ptr<WikiContext> context;
+    std::string path;
+};
+
+}
+
 struct ArticleViewState
 {
     std::shared_ptr<WikiContext> context;
@@ -51,6 +94,7 @@ struct ArticleViewState
     std::string queued_path;
     DocAddr queued_address = 0;
     nav::Event queued_cause = nav::Event::LinkFollowed;
+    bool queued_is_forward = false;
 
     std::function<void(const std::string &, DocAddr)> on_change;
     std::function<void(std::unique_ptr<SlicedJob>)> submit_job;
@@ -166,6 +210,32 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
         queue_navigation(link_target, 0, nav::Event::LinkFollowed);
     });
 
+    // L1/R1 walk the breadcrumb rather than nudging the page: the trail drawn along the top
+    // is exactly this list, so the buttons move through the thing the reader can already
+    // see. Queued, never navigated inline, for the reason on set_on_follow_link above.
+    state->token_view->set_on_shoulder_hop([this](int dir) {
+        if (dir < 0)
+        {
+            go_back();
+        }
+        else
+        {
+            go_forward();
+        }
+    });
+
+    // Resting on a link is the reader telling us where they might go. Take them at their
+    // word and have the article ready. Costs nothing if they move on: the job is dropped,
+    // and at worst the cache holds an article nobody asked for.
+    state->token_view->set_on_link_dwell([this](const std::string &link_target) {
+        if (!state->submit_job)
+        {
+            return;
+        }
+        state->submit_job(std::unique_ptr<SlicedJob>(
+            new PrefetchArticleJob(state->context, link_target)));
+    });
+
     state->token_view->set_on_scroll([this](DocAddr at) {
         update_title(at);
         if (state->on_change)
@@ -186,12 +256,28 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
     return true;
 }
 
-void ArticleView::queue_navigation(const std::string &path, DocAddr address, nav::Event cause)
+void ArticleView::queue_navigation(const std::string &path, DocAddr address, nav::Event cause,
+                                   bool is_forward)
 {
     state->queued_path = path;
     state->queued_address = address;
     state->queued_cause = cause;
+    // A forward step is an ordinary LinkFollowed as far as the state machine is concerned;
+    // it differs only in what happens to the forward stack, so it rides alongside the cause
+    // rather than becoming an event the machine would need a transition for.
+    state->queued_is_forward = is_forward;
     state->step(cause);
+}
+
+bool ArticleView::go_forward()
+{
+    if (!state->history.can_go_forward())
+    {
+        return false;
+    }
+    const HistoryEntry &entry = state->history.peek_forward();
+    queue_navigation(entry.path, entry.address, nav::Event::LinkFollowed, true);
+    return true;
 }
 
 // Called once the key handler has unwound, so replacing the TokenView is safe.
@@ -205,7 +291,13 @@ void ArticleView::perform_queued_navigation()
     const std::string path = state->queued_path;
     const DocAddr address = state->queued_address;
     const bool going_back = state->queued_cause == nav::Event::BackToPrevious;
+    const bool going_forward = state->queued_is_forward;
     state->queued_path.clear();
+    state->queued_is_forward = false;
+
+    // Captured before navigate_to, which destroys the TokenView that current_address()
+    // reads from. This is where we came from, and going back is the only case that wants it.
+    HistoryEntry leaving{ state->path, state->title, current_address() };
 
     // Going back must not record the article being left, or B would push what it just
     // popped and never unwind.
@@ -214,6 +306,19 @@ void ArticleView::perform_queued_navigation()
         if (going_back)
         {
             state->history.pop();
+            state->history.push_forward(std::move(leaving));
+        }
+        else if (going_forward)
+        {
+            // navigate_to already pushed `leaving` onto the back stack; all that is left is
+            // consuming the forward entry we just spent.
+            state->history.pop_forward();
+        }
+        else
+        {
+            // A new link: whatever we had stepped back out of is now unreachable, the same
+            // way a browser drops its forward history the moment you go somewhere new.
+            state->history.clear_forward();
         }
         return;
     }
@@ -291,13 +396,15 @@ void ArticleView::update_title(DocAddr address)
 
     state->token_view->set_title(bar);
 
-    const uint32_t percent =
-        (state->token_view_styling.get_progress_reporting() == ProgressReporting::CHAPTER_PERCENT
-         && position.toc_index < toc.size())
-            ? position.progress_percent
-            : state->reader->get_global_progress_percent(address);
+    // Both, now that there are two bars to put them in. The section percentage is only
+    // meaningful when we are actually inside a section; outside one it tracks the article.
+    const uint32_t global_pct = state->reader->get_global_progress_percent(address);
+    const uint32_t chapter_pct = position.toc_index < toc.size()
+                                     ? position.progress_percent
+                                     : global_pct;
 
-    state->token_view->set_title_progress(static_cast<int>(percent));
+    state->token_view->set_progress(static_cast<int>(global_pct),
+                                    static_cast<int>(chapter_pct));
 }
 
 void ArticleView::open_toc_menu()
@@ -310,16 +417,23 @@ void ArticleView::open_toc_menu()
         return;
     }
 
+    // Depth as depth, not as two leading spaces. The spaces indented by whatever a space
+    // happened to measure and left every level looking alike; real levels also let the menu
+    // dim the subsections, so the shape of the article can be seen rather than read.
     std::vector<std::string> names;
+    std::vector<uint32_t> levels;
     names.reserve(toc.size());
+    levels.reserve(toc.size());
     for (const auto &item : toc)
     {
-        names.push_back(std::string(item.indent_level * 2, ' ') + item.display_name);
+        names.push_back(item.display_name);
+        levels.push_back(item.indent_level);
     }
 
     const auto current = state->reader->get_toc_position(current_address()).toc_index;
 
     auto menu = std::make_shared<SelectionMenu>(names, state->sys_styling);
+    menu->set_levels(levels);
     menu->set_on_selection([this](uint32_t index) {
         if (state->token_view != nullptr && state->reader != nullptr)
         {
@@ -346,7 +460,7 @@ void ArticleView::open_menu()
     // Built rather than fixed, because "Indice" is a dead end on lead-section archives:
     // those articles carry no headings, so the menu would offer an entry that can only
     // report that there is nothing to show.
-    enum class MenuItem { Toc, Help, TitleBar, Settings, Home };
+    enum class MenuItem { Toc, Settings, Home };
 
     std::vector<std::string> labels;
     std::vector<MenuItem> items;
@@ -358,13 +472,6 @@ void ArticleView::open_menu()
         labels.push_back("Indice");
         items.push_back(MenuItem::Toc);
     }
-
-    labels.push_back("Comandi");
-    items.push_back(MenuItem::Help);
-
-    labels.push_back(state->token_view_styling.get_show_title_bar() ? "Nascondi barra"
-                                                                   : "Mostra barra");
-    items.push_back(MenuItem::TitleBar);
 
     labels.push_back("Impostazioni");
     items.push_back(MenuItem::Settings);
@@ -385,15 +492,6 @@ void ArticleView::open_menu()
         {
             case MenuItem::Toc:
                 open_toc_menu();
-                break;
-            case MenuItem::Help:
-                state->view_stack.push(std::make_shared<PopupView>(
-                    "A parole · A apri · X significato · B indietro · START elenco",
-                    SYSTEM_FONT, state->sys_styling));
-                break;
-            case MenuItem::TitleBar:
-                state->token_view_styling.set_show_title_bar(
-                    !state->token_view_styling.get_show_title_bar());
                 break;
             case MenuItem::Settings:
                 if (state->on_open_settings)

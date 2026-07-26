@@ -62,12 +62,30 @@ They were written independently, for the same reason: the upstream
 `aemiii91/miyoomini-toolchain` image is amd64-only and does not work under rootless
 podman on Apple silicon.
 
-**On integration, delete bebook's Dockerfile and use Onion's.** Verified working:
+**On integration, delete bebook's Dockerfile and use Onion's.** Verified working, run from
+the **repository root** — not from `src/bebook`:
 
 ```sh
-podman run --rm -v "$PWD":/root/workspace:z -w /root/workspace \
+podman run --rm -v "$PWD":/root/workspace:z -w /root/workspace/src/bebook \
     localhost/miyoomini-toolchain \
-    sh -c 'export PLATFORM=miyoomini && make -j4 build/bebook'
+    sh -c 'export PLATFORM=miyoomini && make -j8 all'
+```
+
+The mount must be the repo root because the Makefile reaches outside bebook for the
+vendored harfbuzz (`-I../../third-party/harfbuzz/src`). Mounting `src/bebook` alone puts
+that path outside the container and the build stops with
+
+```
+No rule to make target '/root/workspace/third-party/harfbuzz/src/hb.h',
+needed by 'build/miyoomini/objects/src/text/shaper.o'.
+```
+
+which names a missing header rather than a missing mount, so it is worth recognising on
+sight. `all` builds all four binaries; name one target (`reader`, `wiki`, `dict`) to build
+just that app. Outputs land in `build/miyoomini/`, and
+
+```sh
+readelf -h src/bebook/build/miyoomini/bebook | grep -E 'Class|Machine'
 ```
 
 produces

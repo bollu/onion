@@ -186,13 +186,9 @@ int main(int argc, char **argv)
     });
 
     TokenViewStyling token_view_styling(
-        settings_get_show_title_bar(state_store).value_or(DEFAULT_SHOW_PROGRESS),
-        settings_get_progress_reporting(state_store).value_or(DEFAULT_PROGRESS_REPORTING),
         settings_get_justify(state_store).value_or(DEFAULT_JUSTIFY),
         settings_get_hyphenate(state_store).value_or(DEFAULT_HYPHENATE));
     token_view_styling.subscribe_to_changes([&token_view_styling, &state_store]() {
-        settings_set_show_title_bar(state_store, token_view_styling.get_show_title_bar());
-        settings_set_progress_reporting(state_store, token_view_styling.get_progress_reporting());
         settings_set_justify(state_store, token_view_styling.get_justify());
         settings_set_hyphenate(state_store, token_view_styling.get_hyphenate());
     });
@@ -384,6 +380,15 @@ int main(int argc, char **argv)
             list_view = std::make_shared<ReadingListView>(
                 sections, sys_styling, view_stack, open_from_list);
 
+            // Which archive is open, in the header. The app happily reads a summaries-only
+            // ZIM and looks correct doing it, so the filename is the only thing that tells
+            // you which one you launched.
+            {
+                const size_t slash = zim_path.find_last_of('/');
+                list_view->set_archive_name(
+                    slash == std::string::npos ? zim_path : zim_path.substr(slash + 1));
+            }
+
             // Y searches the archive by title. The list itself has no WikiContext, and the
             // opening path is the same one the list uses, so it is wired here rather than
             // duplicated inside the view.
@@ -491,6 +496,20 @@ int main(int argc, char **argv)
                         case 'R': key = SW_BTN_R1; break;
                         default: break;
                     }
+                    // '.' is not a button: it is the reader pausing. Anything gated on the
+                    // cursor settling -- the fuzzy suggestion, the link prefetch -- fires
+                    // only after real time passes and only if pending jobs actually get
+                    // stepped, neither of which happens in a loop that pumps keys
+                    // back-to-back. Without this the harness could drive navigation but
+                    // could never observe the behaviour that makes navigation feel fast.
+                    if (*k == '.')
+                    {
+                        SDL_Delay(350);
+                        view_stack.render(screen, true);  // the dwell is noticed in render
+                        jobs.run(Budget::unlimited());
+                        continue;
+                    }
+
                     if (key == SDLK_UNKNOWN)
                     {
                         continue;
