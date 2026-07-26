@@ -37,6 +37,9 @@ class TokenView: public View
     // ~one page so a press over a large image can't jump far; restores the scroll position
     // and returns false if no word is found within the budget. Updates ws_line on success.
     bool ws_walk(int dir);
+    // The word under the cursor, rejoined when a discretionary hyphen split it across two
+    // lines. What the dictionary and the peek are given.
+    std::string ws_selected_surface() const;
     // The text line and word span under the highlight; false if there is none.
     bool ws_selected_span(const struct TextLine **out_line, struct WordSpan *out_span) const;
     void ws_open_selected();

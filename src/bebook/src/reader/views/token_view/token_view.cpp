@@ -531,7 +531,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             // surface so the provider (a DB lookup) runs once per selection, not per frame.
             if (state->on_word_preview)
             {
-                std::string surface = tl->text.substr(sp.start, sp.end - sp.start);
+                std::string surface = ws_selected_surface();
                 if (surface != state->ws_preview_surface)
                 {
                     state->ws_preview_surface = surface;
@@ -717,12 +717,12 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         const int needed = meaning_w + (meaning_w && grammar_w ? gap : 0) + grammar_w;
         if (needed > avail)
         {
-            // The meaning keeps up to half, the grammar takes what is left. The meaning is
-            // read from a fixed left edge so a cut tail still reads; the grammar is
-            // right-aligned, and cutting it loses the tense at its end, so it gets the
-            // larger remainder whenever the meaning is short.
-            const int meaning_budget = std::min(meaning_w, avail / 2);
-            meaning = text::elide_to_width(font, meaning, meaning_budget);
+            // The meaning is served first, up to two thirds: it carries the pairing being
+            // learned ("loro fecero → they made"), while the grammar repeats what is
+            // derivable -- the dictionary form and a shorthand tense. Capping both at half
+            // instead cut the English off lines where the grammar happened to measure
+            // exactly half, which is most of them.
+            meaning = text::elide_to_width(font, meaning, avail * 2 / 3);
             meaning_w = meaning.empty() ? 0 : width_of(meaning);
 
             grammar = text::elide_to_width(
@@ -1079,6 +1079,17 @@ void TokenView::ws_move_line(int dir)
         // Keep the column roughly where it was rather than snapping to word 0.
         state->ws_word = std::min(state->ws_word, (int)spans.size() - 1);
         ws_recentre();
+        return;
+    }
+
+    // No word within a page in that direction -- a full-page illustration, or a plate
+    // section at the front of a book. Scroll anyway rather than doing nothing: without this
+    // such a book cannot be moved through at all, because every key the reader has is a
+    // cursor key and the cursor has nowhere to go.
+    if (scroll_reporting(dir * state->half_page()) != 0)
+    {
+        ws_seed();
+        state->needs_render = true;
     }
 }
 
@@ -1129,6 +1140,46 @@ bool TokenView::ws_walk(int dir)
 }
 
 // The line and word span currently under the cursor, or false if there is none.
+// The word under the cursor as the dictionary should see it. A line broken at a
+// discretionary hyphen splits one word across two lines, and looking up the halves gives
+// the wrong answer twice over: "con-danna" would resolve "con", a real preposition, and
+// hide that the word is "condanna". TextLine keeps the break as a flag rather than splicing
+// a hyphen into the text, so the two halves join cleanly.
+std::string TokenView::ws_selected_surface() const
+{
+    const TextLine *tl = nullptr;
+    WordSpan sp{};
+    if (!ws_selected_span(&tl, &sp))
+    {
+        return "";
+    }
+
+    std::string surface = tl->text.substr(sp.start, sp.end - sp.start);
+
+    // Only the last word of a hyphenated line continues onto the next one.
+    if (!tl->trailing_hyphen || sp.end != tl->text.size())
+    {
+        return surface;
+    }
+
+    const DisplayLine *next = state->line_scroller.get_line_relative(state->ws_line + 1);
+    if (next == nullptr || next->type != DisplayLine::Type::Text)
+    {
+        return surface;
+    }
+    const auto *next_tl = static_cast<const TextLine *>(next);
+    const auto next_spans = tokenize_words(next_tl->text);
+    if (next_spans.empty() || next_spans.front().start != 0)
+    {
+        // The continuation must start the line; anything else means this was a real hyphen
+        // in the source, not a break the layout introduced.
+        return surface;
+    }
+
+    return surface + next_tl->text.substr(
+        next_spans.front().start, next_spans.front().end - next_spans.front().start);
+}
+
 bool TokenView::ws_selected_span(const TextLine **out_line, WordSpan *out_span) const
 {
     auto spans = spans_at(state->line_scroller, state->ws_line);
@@ -1157,7 +1208,7 @@ void TokenView::ws_open_selected()
         return;
     }
 
-    state->on_open_word(tl->text.substr(sp.start, sp.end - sp.start));
+    state->on_open_word(ws_selected_surface());
 }
 
 void TokenView::ws_follow_selected()

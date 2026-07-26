@@ -29,6 +29,15 @@ bool is_letter(uint32_t cp)
     return false;
 }
 
+// Digits count too. They carry no dictionary entry, but a token the cursor cannot land on
+// is a token it has to jump over: on a wiki article a year is often the most interesting
+// thing in the sentence, and skipping "1946" also skips whatever the cursor would have
+// reached by stopping there.
+bool is_word_char(uint32_t cp)
+{
+    return is_letter(cp) || (cp >= '0' && cp <= '9');
+}
+
 } // namespace
 
 std::vector<WordSpan> tokenize_words(const std::string &text)
@@ -50,7 +59,7 @@ std::vector<WordSpan> tokenize_words(const std::string &text)
         uint32_t byte_off = static_cast<uint32_t>(cp_start - s);
         uint32_t next_off = static_cast<uint32_t>(p - s);
 
-        if (is_letter(cp))
+        if (is_word_char(cp))
         {
             if (word_start < 0)
             {

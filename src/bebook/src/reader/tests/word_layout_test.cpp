@@ -84,3 +84,21 @@ TEST(WordLayout, ByteOffsetsAreCorrect)
     EXPECT_EQ(spans[0], (WordSpan{0, 2}));
     EXPECT_EQ(spans[1], (WordSpan{3, 5}));
 }
+
+TEST(TokenizeWords, DigitsAreSelectable)
+{
+    // A year is often the thing worth landing on in an article, and a token the cursor
+    // cannot reach is also one it silently jumps past.
+    auto w = tokenize_words("nel 1946 la");
+    ASSERT_EQ(w.size(), 3u);
+    EXPECT_EQ(std::string("nel 1946 la").substr(w[1].start, w[1].end - w[1].start), "1946");
+}
+
+TEST(TokenizeWords, AlphanumericRunsStayOneToken)
+{
+    const std::string text = "km2 e 1287,36";
+    auto w = tokenize_words(text);
+    ASSERT_EQ(w.size(), 4u) << "the comma splits the number, as any punctuation does";
+    EXPECT_EQ(text.substr(w[0].start, w[0].end - w[0].start), "km2");
+    EXPECT_EQ(text.substr(w[2].start, w[2].end - w[2].start), "1287");
+}
