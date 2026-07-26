@@ -3,6 +3,8 @@
 
 #include "doc_api/doc_addr.h"
 #include "reader/view.h"
+#include "util/job.h"
+#include "reader/views/token_view/token_view.h"
 #include "wiki/nav_state.h"
 
 #include <functional>
@@ -49,6 +51,11 @@ public:
     DocAddr current_address() const;
 
     // Fires on navigation and on scroll, for the Game Switcher tile and resume state.
+    // Where background work goes. The view builds the job, because it owns the lexicon;
+    // main() routes it, because it owns the frame budget. Neither has to know the other's
+    // half.
+    void set_job_submitter(std::function<void(std::unique_ptr<Job>)> callback);
+
     void set_on_change(std::function<void(const std::string &path, DocAddr)> callback);
 
     // Opens the settings screen. main() owns the SettingsView, which is a long-lived

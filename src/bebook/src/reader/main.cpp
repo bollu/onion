@@ -15,7 +15,9 @@
 #include "sys/game_switcher.h"
 #include "sys/keymap.h"
 #include "sys/screen.h"
+#include "util/budget.h"
 #include "util/fps_limiter.h"
+#include "util/job_runner.h"
 #include "util/held_key_tracker.h"
 #include "util/key_value_file.h"
 #include "util/math.h"
@@ -255,6 +257,11 @@ int main(int argc, char **argv)
 
     // Timing
     Timer idle_timer;
+    // Background work runs in the slack the frame limiter would otherwise sleep away, so
+    // the frame rate is unchanged by construction: the deadline handed to the runner is the
+    // one limit_fps was already going to enforce.
+    JobRunner jobs;
+
     FPSLimiter limit_fps(TARGET_FPS);
     const uint32_t avg_loop_time = 1000 / TARGET_FPS;
 
@@ -276,6 +283,7 @@ int main(int argc, char **argv)
 
     while (!quit)
     {
+        const uint32_t frame_start = SDL_GetTicks();
         if (screenshot_path && screenshot_frames_left-- == 0)
         {
             task_queue.drain();  // let any async book load finish first
@@ -413,6 +421,10 @@ int main(int argc, char **argv)
 
         if (!quit)
         {
+            // A few milliseconds are held back for the blit and flip that follow a frame
+            // whose work overran; when it did not, this is time that was going to be slept.
+            jobs.run(Budget::until(frame_start + avg_loop_time - 4));
+
             limit_fps();
         }
 

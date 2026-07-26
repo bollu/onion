@@ -1,6 +1,8 @@
 #include "./lexicon_service.h"
 
+#include "util/budget.h"
 #include "util/edit_distance.h"
+#include "util/job.h"
 
 #include <sqlite3.h>
 
@@ -291,86 +293,211 @@ std::vector<ConjTable> LexiconService::conjugations(const std::string &lemma) co
     return out;
 }
 
-std::vector<Suggestion> LexiconService::suggest(const std::string &surface, int max_results) const
+namespace
 {
-    std::vector<Suggestion> out;
-    if (!impl->db)
+
+// The suggestion search, as a state machine that can stop between rows.
+//
+// The query is deliberately unranked. "ORDER BY rank" made FTS5 score every match before it
+// could return the first row -- measured at 57-101ms on a desktop for one word, so far worse
+// on the device -- and that is one indivisible lump no amount of slicing divides. Streaming
+// in rowid order costs 0.2ms to the first row and spreads the rest a row at a time, which is
+// exactly what a budget can cut. The ordering was thrown away anyway: every candidate is
+// reranked by edit distance below.
+class SuggestJob : public Job
+{
+public:
+    SuggestJob(sqlite3 *db, const std::string &surface, int max_results,
+               std::function<void(std::vector<Suggestion>)> on_done)
+        : db(db), max_results(max_results), on_done(std::move(on_done))
     {
-        return out;
+        query = fold_accents(surface);
     }
 
-    const std::string q = fold_accents(surface);
-    if (q.size() < 3)  // the trigram tokenizer needs at least three characters
+    ~SuggestJob() override
     {
-        return out;
-    }
-
-    // OR of the query's overlapping trigrams: FTS5 returns words sharing any of them, ranked
-    // by how many they share, so a wrong first (or last) letter still finds the word. Each
-    // trigram is quoted so the tokenizer treats it as one token; skip any with a quote byte.
-    std::string match;
-    for (size_t i = 0; i + 3 <= q.size(); ++i)
-    {
-        const std::string g = q.substr(i, 3);
-        if (g.find('"') != std::string::npos)
+        // A job is dropped the moment its answer stops being wanted, mid-scan and without
+        // warning, so the statement is released here rather than at the end of the scan.
+        if (stmt != nullptr)
         {
-            continue;
+            sqlite3_finalize(stmt);
         }
-        if (!match.empty())
-        {
-            match += " OR ";
-        }
-        match += '"';
-        match += g;
-        match += '"';
-    }
-    if (match.empty())
-    {
-        return out;
     }
 
-    static const char *sql =
-        "SELECT fold, lemma FROM vocab WHERE vocab MATCH ? ORDER BY rank LIMIT 60";
-    sqlite3_stmt *stmt = nullptr;
-    if (sqlite3_prepare_v2(impl->db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    bool step(Budget &budget) override
     {
-        return out;  // no `vocab` table (old DB / FTS5 not built): degrade to no suggestions
-    }
-    sqlite3_bind_text(stmt, 1, match.c_str(), -1, SQLITE_TRANSIENT);
-
-    // Rerank the trigram candidates by actual edit distance and keep the nearest per lemma.
-    const int max_dist = 3;
-    std::unordered_map<std::string, Suggestion> best;
-    while (sqlite3_step(stmt) == SQLITE_ROW)
-    {
-        std::string fold = column_text(stmt, 0);
-        std::string lemma = column_text(stmt, 1);
-        const int d = edit_distance(q, fold, max_dist);
-        if (d > max_dist)
+        if (phase == Phase::Prepare)
         {
-            continue;
+            if (!prepare())
+            {
+                finish();
+                return true;
+            }
+            phase = Phase::Scan;
         }
+
+        if (phase == Phase::Scan)
+        {
+            while (!budget.spent())
+            {
+                if (scanned >= MAX_ROWS || sqlite3_step(stmt) != SQLITE_ROW)
+                {
+                    phase = Phase::Finish;
+                    break;
+                }
+                ++scanned;
+                consider_row();
+            }
+            if (phase != Phase::Finish)
+            {
+                return false;  // out of budget, more rows to come
+            }
+        }
+
+        finish();
+        return true;
+    }
+
+private:
+    enum class Phase { Prepare, Scan, Finish };
+
+    // A runaway guard, not a quality knob. Capping lower does not work: the rows arrive in
+    // rowid order, which is uncorrelated with how good a candidate is, so "the first N" is
+    // an arbitrary subset -- for "bniversita" the right answer sits at row 26,944 of 29,163.
+    // Recall requires scanning them all, and the frame budget is what keeps that free.
+    static const int MAX_ROWS = 200000;
+
+    bool prepare()
+    {
+        if (db == nullptr || query.size() < 3)  // the trigram tokenizer needs three
+        {
+            return false;
+        }
+
+        // OR of the query's overlapping trigrams: FTS5 returns words sharing any of them, so
+        // a wrong first or last letter still finds the word. Each is quoted so the tokenizer
+        // treats it as one token; any carrying a quote byte is skipped.
+        std::string match;
+        for (size_t i = 0; i + 3 <= query.size(); ++i)
+        {
+            const std::string g = query.substr(i, 3);
+            if (g.find('"') != std::string::npos)
+            {
+                continue;
+            }
+            if (!match.empty())
+            {
+                match += " OR ";
+            }
+            match += '"';
+            match += g;
+            match += '"';
+        }
+        if (match.empty())
+        {
+            return false;
+        }
+
+        static const char *sql = "SELECT fold, lemma FROM vocab WHERE vocab MATCH ?";
+        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        {
+            // No `vocab` table (an old DB, or FTS5 not built): degrade to no suggestions.
+            stmt = nullptr;
+            return false;
+        }
+        sqlite3_bind_text(stmt, 1, match.c_str(), -1, SQLITE_TRANSIENT);
+        return true;
+    }
+
+    void consider_row()
+    {
+        const char *fold_c = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+        if (fold_c == nullptr)
+        {
+            return;
+        }
+        // Edit distance is at least the difference in length, so this rejects most rows
+        // without running it -- and running it is the expensive part of a row.
+        const size_t fold_len = static_cast<size_t>(sqlite3_column_bytes(stmt, 0));
+        const size_t q_len = query.size();
+        const size_t diff = fold_len > q_len ? fold_len - q_len : q_len - fold_len;
+        if (diff > static_cast<size_t>(MAX_DIST))
+        {
+            return;
+        }
+
+        std::string fold(fold_c, fold_len);
+        const int d = edit_distance(query, fold, MAX_DIST);
+        if (d > MAX_DIST)
+        {
+            return;
+        }
+
+        const char *lemma_c = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+        std::string lemma = lemma_c != nullptr ? lemma_c : "";
         auto it = best.find(lemma);
         if (it == best.end() || d < it->second.distance)
         {
             best[lemma] = Suggestion{lemma, std::move(fold), d};
         }
     }
-    sqlite3_finalize(stmt);
 
-    for (auto &kv : best)
+    void finish()
     {
-        out.push_back(kv.second);
+        std::vector<Suggestion> out;
+        out.reserve(best.size());
+        for (auto &kv : best)
+        {
+            out.push_back(kv.second);
+        }
+        std::sort(out.begin(), out.end(), [](const Suggestion &a, const Suggestion &b) {
+            if (a.distance != b.distance) return a.distance < b.distance;
+            if (a.matched.size() != b.matched.size()) return a.matched.size() < b.matched.size();
+            return a.lemma < b.lemma;
+        });
+        if (static_cast<int>(out.size()) > max_results)
+        {
+            out.resize(static_cast<size_t>(max_results));
+        }
+        if (on_done)
+        {
+            on_done(std::move(out));
+        }
     }
-    std::sort(out.begin(), out.end(), [](const Suggestion &a, const Suggestion &b) {
-        if (a.distance != b.distance) return a.distance < b.distance;
-        if (a.matched.size() != b.matched.size()) return a.matched.size() < b.matched.size();
-        return a.lemma < b.lemma;
-    });
-    if (static_cast<int>(out.size()) > max_results)
-    {
-        out.resize(static_cast<size_t>(max_results));
-    }
+
+    static const int MAX_DIST = 3;
+
+    sqlite3 *db = nullptr;
+    std::string query;
+    int max_results = 6;
+    std::function<void(std::vector<Suggestion>)> on_done;
+
+    Phase phase = Phase::Prepare;
+    sqlite3_stmt *stmt = nullptr;
+    int scanned = 0;
+    std::unordered_map<std::string, Suggestion> best;
+};
+
+}
+
+std::unique_ptr<Job> LexiconService::make_suggest_job(
+    const std::string &surface, int max_results,
+    std::function<void(std::vector<Suggestion>)> on_done) const
+{
+    return std::unique_ptr<Job>(
+        new SuggestJob(impl->db, surface, max_results, std::move(on_done)));
+}
+
+std::vector<Suggestion> LexiconService::suggest(const std::string &surface, int max_results) const
+{
+    // The blocking form, for callers that want an answer now -- the popup's "did you mean"
+    // opens on demand and has a whole frame to itself. Implemented by running the very same
+    // job to completion, so there is one algorithm rather than two that can disagree.
+    std::vector<Suggestion> out;
+    auto job = make_suggest_job(surface, max_results,
+                                [&out](std::vector<Suggestion> r) { out = std::move(r); });
+    Budget budget = Budget::unlimited();
+    job->step(budget);
     return out;
 }
 

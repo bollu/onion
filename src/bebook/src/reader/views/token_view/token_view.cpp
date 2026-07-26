@@ -5,6 +5,8 @@
 #include "./word_layout.h"
 #include "./ws_camera.h"
 
+#include "util/debounced.h"
+
 #include "doc_api/doc_reader.h"
 #include "doc_api/link_runs.h"
 #include "reader/config.h"
@@ -190,6 +192,13 @@ struct TokenViewState
     std::function<WordPreview(const std::string &)> on_word_preview;
     WordPreview ws_preview;
     std::string ws_preview_surface;
+
+    // Fuzzy suggestion for a word the lexicon does not know, fetched off the frame. The
+    // debounce is what stops a cursor sweeping a line from asking at every step; `asked` is
+    // what stops it asking twice for the same word.
+    std::function<void(const std::string &, TokenView::SuggestReply)> on_word_unknown;
+    Debounced suggest_debounce{300};
+    std::string suggest_asked;
 
     // Whether X follows links. Books have none; a wiki article does. See ws_handle_key.
     bool has_links = false;
@@ -562,6 +571,28 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 {
                     state->ws_preview_surface = surface;
                     state->ws_preview = state->on_word_preview(surface);
+                    // A new word: restart the quiet period, so a cursor still moving asks
+                    // for nothing.
+                    state->suggest_debounce.poke(SDL_GetTicks());
+                }
+
+                if (state->on_word_unknown && state->ws_preview.glosses.empty()
+                    && state->ws_preview_surface != state->suggest_asked
+                    && state->suggest_debounce(SDL_GetTicks()))
+                {
+                    state->suggest_asked = state->ws_preview_surface;
+                    state->on_word_unknown(
+                        state->ws_preview_surface,
+                        [this](const std::string &for_surface, const std::string &text) {
+                            // Late answers are dropped: the cursor may have moved on, and a
+                            // suggestion for a word no longer under it would be a lie.
+                            if (for_surface != state->ws_preview_surface)
+                            {
+                                return;
+                            }
+                            state->ws_preview.grammar = text;
+                            state->needs_render = true;
+                        });
                 }
             }
 
@@ -999,6 +1030,12 @@ void TokenView::set_on_open_word(std::function<void(const std::string &)> callba
 void TokenView::set_on_word_preview(std::function<WordPreview(const std::string &)> callback)
 {
     state->on_word_preview = std::move(callback);
+}
+
+void TokenView::set_on_word_unknown(
+    std::function<void(const std::string &, SuggestReply)> callback)
+{
+    state->on_word_unknown = std::move(callback);
 }
 
 void TokenView::set_follows_links(bool follows)

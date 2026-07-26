@@ -2,6 +2,7 @@
 #define LEXICON_SERVICE_H_
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,6 +11,8 @@
 // produced by tools/build_lexicon.py). Answers the three questions the reader asks about
 // a selected word: what is it (form -> lemma + morphology), what does it mean (glosses),
 // and how does it conjugate (tables per tense).
+class Job;
+
 namespace lexicon
 {
 
@@ -85,6 +88,14 @@ public:
     // edit distance (the "did you mean" fallback; also the seed of a dictionary search app).
     // Nearest first, deduped by lemma. Empty for very short queries or when nothing is close.
     std::vector<Suggestion> suggest(const std::string &surface, int max_results = 6) const;
+
+    // The same search as a resumable job, for callers on the render path. suggest() above is
+    // this run to completion, so the two cannot disagree about what a suggestion is. The
+    // callback fires once, on the slice that finishes; a job dropped before then never calls
+    // it and releases its statement in its destructor.
+    std::unique_ptr<Job> make_suggest_job(
+        const std::string &surface, int max_results,
+        std::function<void(std::vector<Suggestion>)> on_done) const;
 
     // Dictionary-app search over the query (typed without accents): words folding exactly to
     // it (incl. conjugated forms) first, then headword lemmas by prefix, then a fuzzy fallback

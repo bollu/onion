@@ -53,6 +53,7 @@ struct ArticleViewState
     nav::Event queued_cause = nav::Event::LinkFollowed;
 
     std::function<void(const std::string &, DocAddr)> on_change;
+    std::function<void(std::unique_ptr<Job>)> submit_job;
     // Owned by main(), which holds the SettingsView singleton the stack expects.
     std::function<void()> on_open_settings;
 
@@ -136,6 +137,22 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
     state->token_view->set_on_word_preview([this](const std::string &surface) {
         return summarize_word(state->lexicon, surface);
     });
+
+    // A word the lexicon does not know: hand the fuzzy search to whoever owns the frame
+    // budget. Doing it here, inline, is what froze the cursor.
+    state->token_view->set_on_word_unknown(
+        [this](const std::string &surface, TokenView::SuggestReply reply) {
+            if (!state->submit_job)
+            {
+                return;
+            }
+            state->submit_job(state->lexicon.make_suggest_job(
+                surface, 1,
+                [surface, reply](std::vector<lexicon::Suggestion> found) {
+                    reply(surface, found.empty() ? std::string()
+                                                 : "? forse: " + found.front().lemma);
+                }));
+        });
 
     state->token_view->set_on_open_word([this](const std::string &surface) {
         state->view_stack.push(std::make_shared<WordMeaningView>(
@@ -505,4 +522,9 @@ void ArticleView::set_on_change(std::function<void(const std::string &, DocAddr)
 void ArticleView::set_on_open_settings(std::function<void()> callback)
 {
     state->on_open_settings = std::move(callback);
+}
+
+void ArticleView::set_job_submitter(std::function<void(std::unique_ptr<Job>)> callback)
+{
+    state->submit_job = std::move(callback);
 }

@@ -37,6 +37,7 @@ struct ReaderViewState
     // simply !ok() and lookups return empty, so a missing dictionary degrades to an empty
     // popup rather than a crash.
     lexicon::LexiconService lexicon;
+    std::function<void(std::unique_ptr<Job>)> submit_job;
 
     std::unique_ptr<TokenView> token_view;
 
@@ -165,6 +166,22 @@ ReaderView::ReaderView(
     state->token_view->set_on_word_preview([this](const std::string &surface) {
         return summarize_word(state->lexicon, surface);
     });
+
+    // A word the lexicon does not know: hand the fuzzy search to whoever owns the frame
+    // budget. Doing it here, inline, is what froze the cursor.
+    state->token_view->set_on_word_unknown(
+        [this](const std::string &surface, TokenView::SuggestReply reply) {
+            if (!state->submit_job)
+            {
+                return;
+            }
+            state->submit_job(state->lexicon.make_suggest_job(
+                surface, 1,
+                [surface, reply](std::vector<lexicon::Suggestion> found) {
+                    reply(surface, found.empty() ? std::string()
+                                                 : "? forse: " + found.front().lemma);
+                }));
+        });
 }
 
 ReaderView::~ReaderView()
@@ -255,4 +272,9 @@ void ReaderView::seek_to_address(DocAddr address)
             state->on_change_address(address);
         }
     }
+}
+
+void ReaderView::set_job_submitter(std::function<void(std::unique_ptr<Job>)> callback)
+{
+    state->submit_job = std::move(callback);
 }

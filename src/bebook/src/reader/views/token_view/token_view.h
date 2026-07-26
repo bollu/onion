@@ -88,6 +88,16 @@ public:
     // popup. Invoked only when the cursor lands on a different word.
     void set_on_word_preview(std::function<WordPreview(const std::string &)> callback);
 
+    // Asked for a fuzzy suggestion when a word resolves to nothing. Fire-and-forget: the
+    // owner submits the work somewhere that can be interrupted, and calls the reply callback
+    // if and when an answer arrives. The view never blocks on it -- this is the whole reason
+    // it is a callback and not a lookup, since doing it inline froze the cursor.
+    //
+    // Only asked once the cursor has settled, so sweeping a line of proper nouns asks for
+    // nothing.
+    using SuggestReply = std::function<void(const std::string &surface, const std::string &)>;
+    void set_on_word_unknown(std::function<void(const std::string &, SuggestReply)> callback);
+
     // Whether this document has links to follow. A always means "what does this mean"; X
     // follows a link, and exists only where there are links. Configuration rather than
     // state -- set once per document.

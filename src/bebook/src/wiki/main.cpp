@@ -22,7 +22,9 @@
 #include "sys/keymap.h"
 #include "sys/screen.h"
 #include "util/debounced.h"
+#include "util/budget.h"
 #include "util/fps_limiter.h"
+#include "util/job_runner.h"
 #include "util/held_key_tracker.h"
 #include "util/key_value_file.h"
 #include "util/math.h"
@@ -278,8 +280,20 @@ int main(int argc, char **argv)
         tile_write.poke(SDL_GetTicks());
     };
 
+    // Background work runs in the slack the frame limiter would otherwise sleep away, so the
+    // frame rate is unchanged by construction: the deadline handed to the runner below is the
+    // one limit_fps was already going to enforce.
+    JobRunner jobs;
+
     auto install_on_change = [&]() {
         article_view->set_on_change(record_change);
+
+        // Only the newest request survives: an answer for a word the cursor has left is of
+        // no use, and dropping the old job releases its statement.
+        article_view->set_job_submitter([&jobs](std::unique_ptr<Job> job) {
+            jobs.clear();
+            jobs.submit(std::move(job));
+        });
 
         article_view->set_on_open_settings([&view_stack, settings_view]() {
             settings_view->unterminate();
@@ -442,6 +456,7 @@ int main(int argc, char **argv)
 
     while (!quit)
     {
+        const uint32_t frame_start = SDL_GetTicks();
         if (screenshot_path && screenshot_frames_left-- == 0)
         {
             if (const char *pages = SDL_getenv("BEWIKI_SCREENSHOT_PAGES"))
@@ -571,6 +586,10 @@ int main(int argc, char **argv)
 
         if (!quit)
         {
+            // A few milliseconds are held back for the blit and flip that follow a frame
+            // whose work overran; when it did not, this is time that was going to be slept.
+            jobs.run(Budget::until(frame_start + avg_loop_time - 4));
+
             limit_fps();
         }
 

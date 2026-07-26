@@ -3,6 +3,8 @@
 
 #include "doc_api/doc_addr.h"
 #include "reader/view.h"
+#include "util/job.h"
+#include "reader/views/token_view/token_view.h"
 
 #include <filesystem>
 #include <functional>
@@ -38,6 +40,11 @@ public:
 
     void on_keypress(SDLKey key) override;
     void on_keyheld(SDLKey key, uint32_t hold_time_ms) override;
+
+    // Where background work goes. The view builds the job, because it owns the lexicon;
+    // main() routes it, because it owns the frame budget. Neither has to know the other's
+    // half.
+    void set_job_submitter(std::function<void(std::unique_ptr<Job>)> callback);
 
     void set_on_change_address(std::function<void(DocAddr)> callback);
 
