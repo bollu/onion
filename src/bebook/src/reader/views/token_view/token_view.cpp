@@ -13,6 +13,7 @@
 #include "sys/keymap.h"
 #include "sys/screen.h"
 #include "util/sdl_utils.h"
+#include "util/accelerating_throttle.h"
 #include "util/str_utils.h"
 #include "util/throttled.h"
 
@@ -226,8 +227,10 @@ struct TokenViewState
 
     bool word_select() const { return mode == TokenViewMode::WordSelect; }
 
-    Throttled line_scroll_throttle;
-    Throttled page_scroll_throttle;
+    // Reading up/down repeats a half-page scroll at a gentle steady rate; the word-select
+    // cursor (up/down line, left/right word) repeats with an accelerating ease-in.
+    Throttled scroll_throttle;
+    AcceleratingThrottle ws_move_throttle;
 
     int num_display_lines() const
     {
@@ -238,6 +241,12 @@ struct TokenViewState
     {
         bool show_title_bar = token_view_styling.get_show_title_bar();
         return num_display_lines() - (show_title_bar ? 1 : 0);
+    }
+
+    // Reading scroll step: half a screen, keeping a few lines of overlap for context.
+    int half_page() const
+    {
+        return std::max(1, num_text_display_lines() / 2);
     }
 
     int excess_pxl_y() const
@@ -289,8 +298,10 @@ struct TokenViewState
               },
               line_height
           ),
-          line_scroll_throttle(250, 50),
-          page_scroll_throttle(750, 150)
+          // Gentle half-page repeat; and the accelerating cursor gate: ~180ms first steps
+          // easing to a ~40ms floor over ~0.5s of holding, then instant stop on release.
+          scroll_throttle(400, 300),
+          ws_move_throttle(250, 180, 40, 300.0f)
     {
     }
 
@@ -836,16 +847,16 @@ void TokenView::on_keypress(SDLKey key)
 
     switch (key) {
         case SW_BTN_UP:
-            scroll(-1);
+            scroll(-state->half_page());
             break;
         case SW_BTN_DOWN:
-            scroll(1);
+            scroll(state->half_page());
             break;
+        // Left/right enter word-select, exactly like the shoulders: reading scrolls with
+        // up/down (half a page), and horizontal movement is for picking a word to look up.
         case SW_BTN_LEFT:
-            scroll(-state->num_text_display_lines());
-            break;
         case SW_BTN_RIGHT:
-            scroll(state->num_text_display_lines());
+            ws_enter();
             break;
         default:
             break;
@@ -854,21 +865,38 @@ void TokenView::on_keypress(SDLKey key)
 
 void TokenView::on_keyheld(SDLKey key, uint32_t held_time_ms)
 {
-    switch (key) {
+    // In word-select, every direction/shoulder held repeats through the accelerating gate so the
+    // cursor eases up to speed and stops the instant the key is released. In reading, only up/down
+    // repeat (gentle half-page scroll); left/right and the shoulders don't repeat there -- their
+    // first press already entered word-select, so any repeats are handled by the branch above.
+    if (state->word_select())
+    {
+        switch (key)
+        {
+            case SW_BTN_UP:
+            case SW_BTN_DOWN:
+            case SW_BTN_LEFT:
+            case SW_BTN_RIGHT:
+            case SW_BTN_L1:
+            case SW_BTN_R1:
+            case SW_BTN_L2:
+            case SW_BTN_R2:
+                if (state->ws_move_throttle(held_time_ms))
+                {
+                    on_keypress(key);
+                }
+                break;
+            default:
+                break;
+        }
+        return;
+    }
+
+    switch (key)
+    {
         case SW_BTN_UP:
         case SW_BTN_DOWN:
-            if (state->line_scroll_throttle(held_time_ms))
-            {
-                on_keypress(key);
-            }
-            break;
-        case SW_BTN_LEFT:
-        case SW_BTN_RIGHT:
-        case SW_BTN_L1:
-        case SW_BTN_R1:
-        case SW_BTN_L2:
-        case SW_BTN_R2:
-            if (state->page_scroll_throttle(held_time_ms))
+            if (state->scroll_throttle(held_time_ms))
             {
                 on_keypress(key);
             }
