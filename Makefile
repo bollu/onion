@@ -366,7 +366,7 @@ deploy-card:
 # Staging cross-compiles and so must run inside the toolchain; the copy must run outside
 # it, because the container cannot see /Volumes. Hence the two steps rather than a plain
 # prerequisite -- `make deploy-card` on the host would otherwise fail on an unset PREFIX.
-	@$(MAKE) with-toolchain CMD="sideload-bewiki sideload-systems"
+	@$(MAKE) with-toolchain CMD="sideload-bedict sideload-bewiki sideload-systems"
 	@$(ROOT_DIR)/tools/deploy_card.sh
 	@$(ECHO) $(PRINT_DONE)
 
@@ -376,7 +376,7 @@ deploy-wifi:
 	@$(ECHO) $(PRINT_RECIPE)
 # As deploy-card: build in the container, transfer from the host, which is where the
 # hotspot connection lives.
-	@$(MAKE) with-toolchain CMD="sideload-bewiki sideload-systems"
+	@$(MAKE) with-toolchain CMD="sideload-bedict sideload-bewiki sideload-systems"
 	@$(ROOT_DIR)/tools/deploy_wifi.sh
 	@$(ECHO) $(PRINT_DONE)
 

@@ -11,6 +11,26 @@ Nothing here has been run on real hardware yet.
 
 ## Next up
 
+### Planned — English → Italian direction for BeDict (not yet implemented)
+
+Add a reverse (EN→IT) lookup to the standalone BeDict app. **Chosen approach: reverse the
+English glosses we already ingest** — no new download. Full plan (design, files, verification)
+in `~/.claude/plans/please-plan-a-feature-parsed-teapot.md`. Summary:
+
+- **Build** (`tools/build_lexicon.py`): new table `defs_en_it(en_term, en_fold, it_lemma, gloss)`
+  + `idx_defs_en_it_fold`; populate it alongside the existing `defs_it_en` insert (line ~686) via
+  a helper `english_terms_from_gloss(gloss)` that strips `(qualifiers)`, splits on `,`/`;`, drops
+  long phrases, adds a `"to "`-stripped variant. Optional `vocab_en` FTS5 trigram for EN fuzzy.
+- **Service** (`src/lexicon/lexicon_service.{h,cpp}`): add `SearchHit::note` (English gloss shown
+  as the secondary line) and `search_en(query, max)` mirroring `search()`'s exact/prefix/fuzzy
+  tiers against `defs_en_it`; each hit's `word` is the Italian lemma, so it opens the existing
+  Italian entry (glosses + conjugation).
+- **UI** (`src/dict/views/search_view.{h,cpp}`): `Direction {ItEn, EnIt}` member, **`X` toggles**,
+  an `IT→EN`/`EN→IT` badge on the search bar, `refresh_results()` dispatches on direction. Keyboard
+  unchanged (ASCII suits English). Reader popup stays IT→EN by design.
+- **Data**: rebuild `resources/italian.sqlite` (761MB kaikki input present locally) and recompress;
+  the reverse table rides along, no packaging change. Tests: `search_en("dog")` → `cane`.
+
 ### WP6 — OnionOS `EBOOK` system
 
 Built and packaged; **not yet verified on hardware**.
