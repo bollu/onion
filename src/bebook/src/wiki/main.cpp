@@ -246,14 +246,28 @@ int main(int argc, char **argv)
             list_view = std::make_shared<ReadingListView>(
                 sections, sys_styling, view_stack,
                 [&](const std::string &path) {
+                    bool opened = false;
                     if (article_view == nullptr)
                     {
                         article_view = std::make_shared<ArticleView>(
                             context, path, 0, sys_styling, token_view_styling, view_stack);
                         install_on_change();
+                        opened = !article_view->current_path().empty();
                     }
-                    else if (!article_view->navigate_to(path))
+                    else
                     {
+                        // navigate_to also lifts the view out of Done, which is what makes
+                        // the list reusable rather than one-shot.
+                        opened = article_view->navigate_to(path);
+                    }
+
+                    // Say so rather than pushing a view with nothing in it -- that used to
+                    // leave a surface which drew nothing and answered no button -- and
+                    // rather than silently leaving the previous article on screen.
+                    if (!opened)
+                    {
+                        view_stack.push(std::make_shared<PopupView>(
+                            "Voce non disponibile", SYSTEM_FONT, sys_styling));
                         return;
                     }
 
@@ -337,6 +351,46 @@ int main(int argc, char **argv)
                     view_stack.on_keypress(SW_BTN_RIGHT);
                 }
             }
+
+            // BEWIKI_KEYS=aBsudlr drives a sequence before capturing, so navigation flows
+            // can be exercised headlessly. Views are popped between presses exactly as the
+            // real loop does, or a view that finishes would keep receiving input.
+            if (const char *keys = SDL_getenv("BEWIKI_KEYS"))
+            {
+                for (const char *k = keys; *k != '\0'; ++k)
+                {
+                    SDLKey key = SDLK_UNKNOWN;
+                    switch (*k)
+                    {
+                        case 'a': key = SW_BTN_A; break;
+                        case 'b': key = SW_BTN_B; break;
+                        case 'x': key = SW_BTN_X; break;
+                        case 'y': key = SW_BTN_Y; break;
+                        case 'u': key = SW_BTN_UP; break;
+                        case 'd': key = SW_BTN_DOWN; break;
+                        case 'l': key = SW_BTN_LEFT; break;
+                        case 'r': key = SW_BTN_RIGHT; break;
+                        case 's': key = SW_BTN_SELECT; break;
+                        case 'S': key = SW_BTN_START; break;
+                        case 'L': key = SW_BTN_L1; break;
+                        case 'R': key = SW_BTN_R1; break;
+                        default: break;
+                    }
+                    if (key == SDLK_UNKNOWN)
+                    {
+                        continue;
+                    }
+
+                    view_stack.on_keypress(key);
+                    view_stack.pop_completed_views();
+                    if (view_stack.is_done())
+                    {
+                        break;
+                    }
+                    view_stack.render(screen, true);
+                }
+            }
+
             view_stack.render(screen, true);
             write_surface_png(screen, screenshot_path);
             break;

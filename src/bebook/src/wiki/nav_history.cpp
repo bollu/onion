@@ -24,6 +24,11 @@ bool NavHistory::can_go_back() const
     return !stack.empty();
 }
 
+const HistoryEntry &NavHistory::peek() const
+{
+    return stack.back();
+}
+
 HistoryEntry NavHistory::pop()
 {
     HistoryEntry entry = stack.back();

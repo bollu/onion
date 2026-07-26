@@ -3,6 +3,7 @@
 
 #include "doc_api/doc_addr.h"
 #include "reader/view.h"
+#include "wiki/nav_state.h"
 
 #include <functional>
 #include <memory>
@@ -52,6 +53,12 @@ public:
 
 private:
     std::unique_ptr<ArticleViewState> state;
+
+    // Records where to go and moves the machine to NavigationQueued. The move itself waits
+    // for perform_queued_navigation, because following a link is reported from inside the
+    // TokenView that the move destroys.
+    void queue_navigation(const std::string &path, DocAddr address, nav::Event cause);
+    void perform_queued_navigation();
 
     void update_title(DocAddr address);
     void open_menu();

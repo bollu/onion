@@ -810,6 +810,11 @@ void TokenView::set_on_open_word(std::function<void(const std::string &)> callba
     state->on_open_word = std::move(callback);
 }
 
+void TokenView::enter_word_select()
+{
+    ws_enter();
+}
+
 void TokenView::set_link_mode(bool enabled)
 {
     state->link_mode = enabled;

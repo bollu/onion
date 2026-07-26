@@ -1,6 +1,7 @@
 #include "./article_view.h"
 
 #include "wiki/nav_history.h"
+#include "wiki/nav_state.h"
 #include "wiki/wiki_context.h"
 
 #include "reader/config.h"
@@ -38,8 +39,18 @@ struct ArticleViewState
     std::string path;
     std::string title;
 
-    bool is_done = false;
+    // The lifecycle, as one value rather than a scatter of flags. See wiki/nav_state.h.
+    nav::State nav_state = nav::State::Empty;
+
+    // Set alongside NavigationQueued and consumed once input has unwound. The cause is
+    // kept rather than a "was this a back-step?" flag, so the queue says why it exists.
+    std::string queued_path;
+    DocAddr queued_address = 0;
+    nav::Event queued_cause = nav::Event::LinkFollowed;
+
     std::function<void(const std::string &, DocAddr)> on_change;
+
+    void step(nav::Event event) { nav_state = nav::transition(nav_state, event); }
 
     ArticleViewState(std::shared_ptr<WikiContext> context,
                      SystemStyling &sys_styling,
@@ -77,9 +88,24 @@ ArticleView::~ArticleView()
 
 bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool record_history)
 {
-    auto reader = state->context->open_article(path);
-    if (reader == nullptr)
+    // Reopening after the view retired: the list pushes the same object again, so the
+    // machine has to be told before it will accept an article. This is the transition the
+    // bool had no way to express, which is why the reading list was a one-shot.
+    if (nav::is_finished(state->nav_state))
     {
+        state->step(nav::Event::Reopened);
+    }
+
+    // `path` may alias the target inside the TokenView destroyed below, so copy it before
+    // anything is torn down.
+    const std::string target = path;
+
+    auto reader = state->context->open_article(target);
+    if (reader == nullptr || !reader->has_content())
+    {
+        state->step(state->nav_state == nav::State::NavigationQueued
+                        ? nav::Event::QueuedNavFailed
+                        : nav::Event::OpenFailed);
         return false;
     }
 
@@ -103,12 +129,11 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
             surface, state->lexicon, state->sys_styling));
     });
 
-    state->token_view->set_on_follow_link([this](const std::string &target) {
-        if (!navigate_to(target))
-        {
-            state->view_stack.push(std::make_shared<PopupView>(
-                "Voce non disponibile", SYSTEM_FONT, state->sys_styling));
-        }
+    // Queue rather than navigate. This callback runs inside TokenView::ws_follow_selected,
+    // and navigating here would destroy the very TokenView whose method is on the stack --
+    // taking this std::function, and the string `link_target` refers to, with it.
+    state->token_view->set_on_follow_link([this](const std::string &link_target) {
+        queue_navigation(link_target, 0, nav::Event::LinkFollowed);
     });
 
     state->token_view->set_on_scroll([this](DocAddr at) {
@@ -125,7 +150,48 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
         state->on_change(state->path, address);
     }
 
+    state->step(state->nav_state == nav::State::NavigationQueued
+                    ? nav::Event::QueuedNavSucceeded
+                    : nav::Event::OpenSucceeded);
     return true;
+}
+
+void ArticleView::queue_navigation(const std::string &path, DocAddr address, nav::Event cause)
+{
+    state->queued_path = path;
+    state->queued_address = address;
+    state->queued_cause = cause;
+    state->step(cause);
+}
+
+// Called once the key handler has unwound, so replacing the TokenView is safe.
+void ArticleView::perform_queued_navigation()
+{
+    if (state->nav_state != nav::State::NavigationQueued)
+    {
+        return;
+    }
+
+    const std::string path = state->queued_path;
+    const DocAddr address = state->queued_address;
+    const bool going_back = state->queued_cause == nav::Event::BackToPrevious;
+    state->queued_path.clear();
+
+    // Going back must not record the article being left, or B would push what it just
+    // popped and never unwind.
+    if (navigate_to(path, address, !going_back))
+    {
+        if (going_back)
+        {
+            state->history.pop();
+        }
+        return;
+    }
+
+    // navigate_to has already returned the machine to Active, so the article we never
+    // left stays on screen and, for a back-step, its history entry survives.
+    state->view_stack.push(std::make_shared<PopupView>(
+        "Voce non disponibile", SYSTEM_FONT, state->sys_styling));
 }
 
 bool ArticleView::go_back()
@@ -135,8 +201,11 @@ bool ArticleView::go_back()
         return false;
     }
 
-    const HistoryEntry entry = state->history.pop();
-    return navigate_to(entry.path, entry.address, false);
+    // Peek, do not pop: a failed navigation must not consume the entry. It is dropped in
+    // perform_queued_navigation only once the article has actually opened.
+    const HistoryEntry &entry = state->history.peek();
+    queue_navigation(entry.path, entry.address, nav::Event::BackToPrevious);
+    return true;
 }
 
 void ArticleView::update_title(DocAddr address)
@@ -227,7 +296,11 @@ void ArticleView::open_menu()
 
 bool ArticleView::render(SDL_Surface *dest_surface, bool force_render)
 {
-    if (state->token_view == nullptr)
+    // Also a backstop: a navigation queued from anywhere other than a key handler still
+    // resolves before the next frame is drawn.
+    perform_queued_navigation();
+
+    if (!nav::has_article(state->nav_state) || state->token_view == nullptr)
     {
         return false;
     }
@@ -236,7 +309,7 @@ bool ArticleView::render(SDL_Surface *dest_surface, bool force_render)
 
 bool ArticleView::is_done()
 {
-    return state->is_done;
+    return nav::is_finished(state->nav_state);
 }
 
 void ArticleView::on_focus()
@@ -249,7 +322,7 @@ void ArticleView::on_focus()
 
 void ArticleView::on_keypress(SDLKey key)
 {
-    if (state->token_view == nullptr)
+    if (!nav::has_article(state->nav_state) || state->token_view == nullptr)
     {
         return;
     }
@@ -259,29 +332,40 @@ void ArticleView::on_keypress(SDLKey key)
     if (state->token_view->is_word_select_active())
     {
         state->token_view->on_keypress(key);
-        return;
+    }
+    else
+    {
+        switch (key)
+        {
+            case SW_BTN_B:
+                // Back through the history, then out to the reading list.
+                if (!go_back())
+                {
+                    state->step(nav::Event::BackExhausted);
+                }
+                break;
+            case SW_BTN_A:
+                // A is the primary action, so it starts word select -- the feature the
+                // whole app is built around. It used to toggle the title bar, which on a
+                // page full of underlined links reads as the app breaking.
+                state->token_view->enter_word_select();
+                break;
+            case SW_BTN_START:
+                // Out to the reading list in one press, rather than unwinding by hand.
+                state->step(nav::Event::HomeRequested);
+                break;
+            case SW_BTN_SELECT:
+                open_menu();
+                break;
+            default:
+                state->token_view->on_keypress(key);
+                break;
+        }
     }
 
-    switch (key)
-    {
-        case SW_BTN_B:
-            // Back through the history, then out of the app.
-            if (!go_back())
-            {
-                state->is_done = true;
-            }
-            break;
-        case SW_BTN_A:
-            state->token_view_styling.set_show_title_bar(
-                !state->token_view_styling.get_show_title_bar());
-            break;
-        case SW_BTN_SELECT:
-            open_menu();
-            break;
-        default:
-            state->token_view->on_keypress(key);
-            break;
-    }
+    // Safe here and not before: every TokenView frame has returned, so replacing it
+    // cannot pull the ground from under a live callback.
+    perform_queued_navigation();
 }
 
 void ArticleView::on_keyheld(SDLKey key, uint32_t hold_time_ms)
@@ -290,6 +374,7 @@ void ArticleView::on_keyheld(SDLKey key, uint32_t hold_time_ms)
     {
         state->token_view->on_keyheld(key, hold_time_ms);
     }
+    perform_queued_navigation();
 }
 
 const std::string &ArticleView::current_path() const

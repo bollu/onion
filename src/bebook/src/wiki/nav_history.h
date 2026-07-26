@@ -27,6 +27,11 @@ public:
 
     bool can_go_back() const;
 
+    // The most recent entry, left in place. Undefined unless can_go_back(). Navigation
+    // peeks first and pops only once the article has opened, so a failed back-step costs
+    // a message rather than the entry.
+    const HistoryEntry &peek() const;
+
     // Removes and returns the most recent entry. Undefined unless can_go_back().
     HistoryEntry pop();
 

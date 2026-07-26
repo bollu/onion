@@ -66,6 +66,10 @@ public:
     // input here (including A/B) while this holds, so the mode owns the keyboard.
     bool is_word_select_active() const;
 
+    // Start word selection. The shoulder buttons do this implicitly; the wiki reader also
+    // offers it on A, where a handheld user looks for the primary action first.
+    void enter_word_select();
+
     // Called with the selected surface form when the user asks for a word's meaning: A in
     // a book, X once link mode is on. The owner uses this to open the meaning popup. The
     // mode stays active.
