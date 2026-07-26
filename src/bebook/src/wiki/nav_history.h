@@ -36,6 +36,10 @@ public:
     HistoryEntry pop();
 
     size_t size() const;
+
+    // The trail, oldest first, for the breadcrumb. Read-only: navigation still goes through
+    // push/pop, so this cannot desynchronise from where B will actually take you.
+    const std::vector<HistoryEntry> &entries() const;
     void clear();
 
 private:

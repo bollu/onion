@@ -41,6 +41,11 @@ size_t NavHistory::size() const
     return stack.size();
 }
 
+const std::vector<HistoryEntry> &NavHistory::entries() const
+{
+    return stack;
+}
+
 void NavHistory::clear()
 {
     stack.clear();

@@ -1,5 +1,6 @@
 #include "./article_view.h"
 
+#include "wiki/breadcrumb.h"
 #include "wiki/nav_history.h"
 #include "wiki/nav_state.h"
 #include "wiki/wiki_context.h"
@@ -16,6 +17,7 @@
 
 #include "filetypes/zim/zim_article_reader.h"
 #include "lexicon/lexicon_service.h"
+#include "text/font.h"
 #include "sys/keymap.h"
 
 #include <utility>
@@ -228,9 +230,28 @@ void ArticleView::update_title(DocAddr address)
     const auto &toc = state->reader->get_table_of_contents();
     const auto position = state->reader->get_toc_position(address);
 
-    // The article title, not the section: on a wiki, which article you are in matters more
-    // than which heading, and the section is one SELECT press away.
-    state->token_view->set_title(state->title);
+    // The trail rather than the bare title: on a wiki, how you got here is context the
+    // title alone loses, and B unwinds exactly this list. The section heading is still one
+    // SELECT press away.
+    //
+    // Measured against the title bar's own width through the same font it will be drawn
+    // with, so the breadcrumb decides what fits rather than being cut afterwards.
+    std::vector<std::string> trail;
+    for (const auto &entry : state->history.entries())
+    {
+        trail.push_back(entry.title);
+    }
+    trail.push_back(state->title);
+
+    text::Font *font = state->sys_styling.get_loaded_font();
+    state->token_view->set_title(wiki::breadcrumb(
+        trail,
+        state->token_view->title_text_width(),
+        [font](const std::string &s) {
+            int w = 0;
+            text::text_size(font, s.c_str(), &w, nullptr);
+            return w;
+        }));
 
     const uint32_t percent =
         (state->token_view_styling.get_progress_reporting() == ProgressReporting::CHAPTER_PERCENT

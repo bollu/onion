@@ -113,6 +113,7 @@ const TenseInfo TENSE_ORDER[] = {
     {"presente",         "Indicativo Presente"},
     {"imperfetto",       "Imperfetto"},
     {"passato_prossimo", "Passato Prossimo"},
+    {"passato_remoto",   "Passato Remoto"},
     {"futuro_semplice",  "Futuro Semplice"},
     {"condizionale",     "Condizionale"},
 };

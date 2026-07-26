@@ -679,10 +679,11 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
     }
 
-    // The peek panel: the top line, always present. Grammar on the left in the dim colour,
-    // meaning on the right in the bright one -- position and colour separate the two zones,
-    // so neither needs a dash between them. The panel does not hide when a word has no
-    // entry, because the text below it would then shift by a line as the cursor moved.
+    // The peek panel: the top line, always present. The meaning sits on the left in the
+    // bright colour and the grammar right in the dim one -- the meaning is what the eye is
+    // going for, and a fixed left edge is the shortest glance. Position and colour separate
+    // the zones, so neither needs a dash between them. The panel does not hide when a word
+    // has no entry, because the text below would then shift by a line as the cursor moved.
     {
         const Sint16 bar_y = 0;
         SDL_Rect bar = {0, bar_y, (Uint16)SCREEN_WIDTH, (Uint16)line_height};
@@ -698,35 +699,52 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
 
         const int baseline = bar_y + leading_above + ascent;
         const int avail = state->text_width();
+        const int gap = line_height / 2;
 
-        // The meaning is what the reader is after, so it is measured first and keeps its
-        // width; the grammar zone elides into whatever is left.
-        int meaning_w = 0;
+        auto width_of = [font](const std::string &t) {
+            int w = 0;
+            text::text_size(font, t.c_str(), &w, nullptr);
+            return w;
+        };
+
         std::string meaning = state->ws_preview.meaning;
-        if (!meaning.empty())
-        {
-            meaning = text::elide_to_width(font, meaning, avail / 2);
-            text::text_size(font, meaning.c_str(), &meaning_w, nullptr);
-        }
+        std::string grammar = state->ws_preview.grammar;
+        int meaning_w = meaning.empty() ? 0 : width_of(meaning);
+        int grammar_w = grammar.empty() ? 0 : width_of(grammar);
 
-        if (!state->ws_preview.grammar.empty())
+        // Only elide when the two actually collide. Eliding on principle cost the tense --
+        // the part the grammar zone exists for -- on lines that had room to spare.
+        const int needed = meaning_w + (meaning_w && grammar_w ? gap : 0) + grammar_w;
+        if (needed > avail)
         {
-            const int gap = line_height / 2;
-            const std::string grammar = text::elide_to_width(
-                font, state->ws_preview.grammar, std::max(0, avail - meaning_w - gap));
-            text::draw_text(
-                dest_surface, font, grammar.c_str(),
-                margin_x, baseline,
-                theme.secondary_text, theme.background
-            );
+            // The meaning keeps up to half, the grammar takes what is left. The meaning is
+            // read from a fixed left edge so a cut tail still reads; the grammar is
+            // right-aligned, and cutting it loses the tense at its end, so it gets the
+            // larger remainder whenever the meaning is short.
+            const int meaning_budget = std::min(meaning_w, avail / 2);
+            meaning = text::elide_to_width(font, meaning, meaning_budget);
+            meaning_w = meaning.empty() ? 0 : width_of(meaning);
+
+            grammar = text::elide_to_width(
+                font, grammar, std::max(0, avail - meaning_w - gap));
+            grammar_w = grammar.empty() ? 0 : width_of(grammar);
         }
 
         if (!meaning.empty())
         {
             text::draw_text(
                 dest_surface, font, meaning.c_str(),
-                margin_x + avail - meaning_w, baseline,
+                margin_x, baseline,
                 theme.main_text, theme.background
+            );
+        }
+
+        if (!grammar.empty())
+        {
+            text::draw_text(
+                dest_surface, font, grammar.c_str(),
+                margin_x + avail - grammar_w, baseline,
+                theme.secondary_text, theme.background
             );
         }
     }
@@ -805,37 +823,26 @@ void TokenView::scroll(int num_lines)
 
 void TokenView::on_keypress(SDLKey key)
 {
-    // A shoulder button is the word-select control: it maps to "previous"/"next"
-    // (SW_BTN_LEFT / SW_BTN_RIGHT). `shoulder` is that canonical key, or SDLK_UNKNOWN if
-    // this press was not a shoulder button.
-    SDLKey shoulder = SDLK_UNKNOWN;
-    if (key == SW_BTN_L1 || key == SW_BTN_R1 || key == SW_BTN_L2 || key == SW_BTN_R2)
+    // Either shoulder pair jumps half a page: left back, right forward. Both pairs rather
+    // than the one the shoulder keymap selects, because paging is now all the shoulders do
+    // -- binding only the chosen pair would leave the other two buttons dead, where before
+    // any of the four entered word-select.
+    //
+    // The d-pad drives the cursor, which is what freed the shoulders for this. A page jump
+    // moves the cursor half a page and lets the camera follow, so it is the same rule as
+    // every other move rather than a second kind of scrolling.
+    switch (key)
     {
-        auto [l_key, r_key] = get_shoulder_keymap_lr(
-            state->sys_styling.get_shoulder_keymap()
-        );
-        if (key == l_key)
-        {
-            shoulder = SW_BTN_LEFT;
-        }
-        else if (key == r_key)
-        {
-            shoulder = SW_BTN_RIGHT;
-        }
-    }
-
-    // Shoulders jump half a page. They are free for it because the d-pad drives the cursor
-    // now; the camera then re-centres, so a page jump is the same rule as any other move
-    // rather than a second kind of scrolling.
-    if (shoulder == SW_BTN_LEFT)
-    {
-        ws_page(-1);
-        return;
-    }
-    if (shoulder == SW_BTN_RIGHT)
-    {
-        ws_page(1);
-        return;
+        case SW_BTN_L1:
+        case SW_BTN_L2:
+            ws_page(-1);
+            return;
+        case SW_BTN_R1:
+        case SW_BTN_R2:
+            ws_page(1);
+            return;
+        default:
+            break;
     }
 
     ws_handle_key(key);
@@ -893,6 +900,25 @@ bool TokenView::is_done()
 void TokenView::set_word_select_hint(const std::string &hint)
 {
     state->hint = hint;
+}
+
+int TokenView::title_text_width() const
+{
+    // Mirrors the crop in render(): both margins, the progress percent, and the battery when
+    // one can be read. The percent is measured at its widest ("100%") rather than its
+    // current value, so the breadcrumb does not reflow as progress ticks over.
+    text::Font *font = state->sys_styling.get_loaded_font();
+    int percent_w = 0;
+    text::text_size(font, "100%", &percent_w, nullptr);
+
+    int battery_w = 0;
+    if (read_battery_percent() >= 0)
+    {
+        const int body_h = std::max(6, state->line_height / 3);
+        battery_w = body_h * 2 + std::max(1, body_h / 4) + state->margin_x / 2;
+    }
+
+    return std::max(0, SCREEN_WIDTH - state->margin_x * 2 - percent_w - battery_w);
 }
 
 void TokenView::set_title(const std::string &title)

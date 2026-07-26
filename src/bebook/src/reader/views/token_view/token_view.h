@@ -62,6 +62,11 @@ public:
     void seek_to_address(DocAddr address);
 
     void set_title(const std::string &title);
+
+    // Room the title actually has, once the progress percent and battery glyph on the right
+    // have taken theirs. For callers that compose the title to fit -- the wiki breadcrumb
+    // decides what to drop, and needs the same number render will crop to.
+    int title_text_width() const;
     void set_title_progress(int percent);
 
     // Replaces the title in the bottom bar. Empty leaves the title showing.

@@ -131,12 +131,14 @@ TEST(LexiconService, TablesAreInDisplayOrder)
 {
     LexiconService lex = open();
     auto tables = lex.conjugations("parlare");
-    ASSERT_EQ(tables.size(), 5u);
+    ASSERT_EQ(tables.size(), 6u);
     EXPECT_EQ(tables[0].tense, "presente");
     EXPECT_EQ(tables[1].tense, "imperfetto");
     EXPECT_EQ(tables[2].tense, "passato_prossimo");
-    EXPECT_EQ(tables[3].tense, "futuro_semplice");
-    EXPECT_EQ(tables[4].tense, "condizionale");
+    // The two past tenses sit together, ahead of the future.
+    EXPECT_EQ(tables[3].tense, "passato_remoto");
+    EXPECT_EQ(tables[4].tense, "futuro_semplice");
+    EXPECT_EQ(tables[5].tense, "condizionale");
 }
 
 TEST(LexiconService, RegularVerbConjugation)
