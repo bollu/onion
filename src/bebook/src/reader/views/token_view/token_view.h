@@ -79,6 +79,12 @@ public:
     // mode stays active.
     void set_on_open_word(std::function<void(const std::string &)> callback);
 
+    // Called with the highlighted surface form to produce a one-line meaning, shown as a
+    // thin HUD while word-select is active so meanings can be skimmed without opening the
+    // full popup. Optional: if unset (e.g. the wiki reader), no preview line is drawn. The
+    // callback is invoked only when the highlighted word changes.
+    void set_on_word_preview(std::function<std::string(const std::string &)> callback);
+
     // Which scheme the buttons follow once a word is selected. Configuration rather than
     // state -- it is set once per document and does not change while reading.
     enum class WordSelectKeys

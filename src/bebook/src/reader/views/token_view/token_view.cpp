@@ -57,6 +57,41 @@ std::vector<text::Line> layout_paragraph_with(
     );
 }
 
+// Truncate `s` to fit `max_px`, appending an ellipsis when it does not. UTF-8 aware: whole
+// code points are dropped from the end so a multibyte glyph is never split. Used for the
+// one-line word-select meaning preview.
+std::string elide_to_width(text::Font *font, const std::string &s, int max_px)
+{
+    int w = 0;
+    text::text_size(font, s.c_str(), &w, nullptr);
+    if (w <= max_px)
+    {
+        return s;
+    }
+
+    const std::string ellipsis = "\xE2\x80\xA6";  // …
+    std::string out = s;
+    while (!out.empty())
+    {
+        // Drop the final UTF-8 code point (skip continuation bytes 10xxxxxx).
+        size_t i = out.size() - 1;
+        while (i > 0 && (static_cast<unsigned char>(out[i]) & 0xC0) == 0x80)
+        {
+            --i;
+        }
+        out.erase(i);
+
+        std::string candidate = out + ellipsis;
+        int cw = 0;
+        text::text_size(font, candidate.c_str(), &cw, nullptr);
+        if (cw <= max_px)
+        {
+            return candidate;
+        }
+    }
+    return ellipsis;
+}
+
 // Build the StyledText for a laid-out text line, exactly as render() does.
 text::StyledText styled_for(const TextLine *tl, const text::Font *font)
 {
@@ -171,6 +206,14 @@ struct TokenViewState
     int ws_line = 0;
     int ws_word = 0;
     std::function<void(const std::string &)> on_open_word;
+
+    // One-line meaning HUD for the selected word. `on_word_preview` maps a surface form to a
+    // one-line summary (books wire it to the lexicon; the wiki reader leaves it unset). The
+    // result is cached against the surface it was computed for, so the provider runs only
+    // when the highlight lands on a different word.
+    std::function<std::string(const std::string &)> on_word_preview;
+    std::string ws_preview;
+    std::string ws_preview_surface;
 
     // Which buttons do what once a word is selected. See ws_handle_key.
     TokenView::WordSelectKeys word_select_keys = TokenView::WordSelectKeys::LookupOnA;
@@ -510,6 +553,18 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             const auto *tl = static_cast<const TextLine *>(line);
             const WordSpan &sp = spans[state->ws_word];
 
+            // Refresh the meaning preview when the highlight lands on a new word. Cached by
+            // surface so the provider (a DB lookup) runs once per selection, not per frame.
+            if (state->on_word_preview)
+            {
+                std::string surface = tl->text.substr(sp.start, sp.end - sp.start);
+                if (surface != state->ws_preview_surface)
+                {
+                    state->ws_preview_surface = surface;
+                    state->ws_preview = state->on_word_preview(surface);
+                }
+            }
+
             WordBox wb = word_box(tl, font, state->text_width(), margin_x, sp);
 
             const int pad = 2;
@@ -551,7 +606,12 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
     }
 
-    if (state->token_view_styling.get_show_title_bar())
+    // A meaning preview replaces the bottom title/hint bar while it shows, so word-select
+    // presents a single HUD line rather than two competing bars.
+    const bool show_preview_bar =
+        state->word_select() && state->on_word_preview && !state->ws_preview.empty();
+
+    if (state->token_view_styling.get_show_title_bar() && !show_preview_bar)
     {
         // Recompute for short book case
         line_y = padding_y + num_text_display_lines * line_height;
@@ -652,6 +712,36 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
                 &clip
             );
         }
+    }
+
+    // Word-select meaning HUD: a single thin line at the screen edge opposite the highlight,
+    // so it never covers the selected word. Bottom bar when the highlight is in the top half
+    // of the screen, top bar when it is in the bottom half; long meanings are elided.
+    if (show_preview_bar)
+    {
+        const int hl_mid = padding_y + state->ws_line * line_height + line_height / 2;
+        const bool at_bottom = hl_mid < SCREEN_HEIGHT / 2;
+        const Sint16 bar_y = static_cast<Sint16>(at_bottom ? SCREEN_HEIGHT - line_height : 0);
+
+        SDL_Rect bar = {0, bar_y, (Uint16)SCREEN_WIDTH, (Uint16)line_height};
+        SDL_FillRect(dest_surface, &bar,
+            SDL_MapRGB(dest_surface->format, theme.background.r, theme.background.g, theme.background.b));
+
+        // A hairline rule on the bar's inner edge separates it from the page.
+        SDL_Rect rule = {
+            0,
+            static_cast<Sint16>(at_bottom ? bar_y : bar_y + line_height - 1),
+            (Uint16)SCREEN_WIDTH, 1
+        };
+        SDL_FillRect(dest_surface, &rule,
+            SDL_MapRGB(dest_surface->format, theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b));
+
+        const std::string shown = elide_to_width(font, state->ws_preview, state->text_width());
+        text::draw_text(
+            dest_surface, font, shown.c_str(),
+            margin_x, bar_y + leading_above + ascent,
+            theme.main_text, theme.background
+        );
     }
 
     return true;
@@ -849,6 +939,11 @@ void TokenView::set_on_open_word(std::function<void(const std::string &)> callba
     state->on_open_word = std::move(callback);
 }
 
+void TokenView::set_on_word_preview(std::function<std::string(const std::string &)> callback)
+{
+    state->on_word_preview = std::move(callback);
+}
+
 void TokenView::enter_word_select()
 {
     ws_enter();
@@ -893,6 +988,9 @@ void TokenView::ws_exit()
     if (state->word_select())
     {
         state->mode = TokenViewMode::Reading;
+        // Drop the cached preview so re-entering recomputes for the freshly selected word.
+        state->ws_preview.clear();
+        state->ws_preview_surface.clear();
         state->needs_render = true;
     }
 }

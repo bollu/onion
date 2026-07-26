@@ -9,6 +9,7 @@
 #include "reader/config.h"
 #include "reader/system_styling.h"
 #include "reader/view_stack.h"
+#include "reader/word_preview.h"
 
 #include "doc_api/doc_reader.h"
 #include "sys/keymap.h"
@@ -152,11 +153,19 @@ ReaderView::ReaderView(
         }
     });
 
-    // Open the dictionary popup when the word-select highlight is confirmed with A.
+    // Open the dictionary popup when the word-select highlight is confirmed with A. START
+    // inside the popup leaves the book entirely, so wire the popup's exit hook to this view.
     state->token_view->set_on_open_word([this](const std::string &surface) {
-        state->view_stack.push(std::make_shared<WordMeaningView>(
+        auto view = std::make_shared<WordMeaningView>(
             surface, state->lexicon, state->sys_styling
-        ));
+        );
+        view->set_on_exit_reader([this] { state->is_done = true; });
+        state->view_stack.push(view);
+    });
+
+    // Feed the word-select HUD a one-line meaning for the highlighted word.
+    state->token_view->set_on_word_preview([this](const std::string &surface) {
+        return summarize_word(state->lexicon, surface);
     });
 }
 
@@ -201,18 +210,19 @@ bool ReaderView::is_done()
 
 void ReaderView::on_keypress(SDLKey key)
 {
-    // While word-select owns the keyboard, route everything (including A/B) to it, so A
-    // opens the meaning popup and B exits the mode instead of toggling the title bar /
-    // closing the book.
-    if (state->token_view->is_word_select_active())
+    // START leaves the book, from anywhere at this level (reading or word-select). Checked
+    // before the word-select forward so the picker can't swallow it.
+    if (key == SW_BTN_START)
     {
-        state->token_view->on_keypress(key);
+        state->is_done = true;
         return;
     }
 
-    if (key == SW_BTN_B)
+    // While word-select owns the keyboard, route everything (including A/B) to it, so A
+    // opens the meaning popup and B exits the mode (the inverse of the L/R that entered it).
+    if (state->token_view->is_word_select_active())
     {
-        state->is_done = true;
+        state->token_view->on_keypress(key);
         return;
     }
 
@@ -224,6 +234,10 @@ void ReaderView::on_keypress(SDLKey key)
             break;
         case SW_BTN_SELECT:
             open_toc_menu(*this, *state);
+            break;
+        case SW_BTN_B:
+            // Idempotent: B only unwinds the dictionary lookup. With no popup or picker open
+            // there is nothing to back out of, and it never leaves the book -- START does.
             break;
         default:
             state->token_view->on_keypress(key);
