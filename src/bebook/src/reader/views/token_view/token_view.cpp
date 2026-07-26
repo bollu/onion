@@ -27,6 +27,12 @@
 
 namespace {
 
+// Lines the peek panel occupies at the top of the screen: the pairing being learned, and
+// what is true of the word. Permanent rather than shown-on-demand because the cursor is
+// always live -- a panel that came and went would shift every line of text under it as the
+// cursor moved. It costs a line of text, which is the trade this app exists to make.
+const int PEEK_LINES = 2;
+
 // Lays out one paragraph with the current font and column.
 //
 // The measurement callback hands the breaker exact 26.6 widths of arbitrary byte ranges.
@@ -200,13 +206,15 @@ struct TokenViewState
         return SCREEN_HEIGHT / line_height;
     }
 
-    // One line goes to the peek panel at the top, permanently. It is permanent rather
-    // than shown-on-demand because the cursor is always live: a panel that appeared and
-    // vanished would shift every line of text under it as the cursor moved.
+    // Two lines go to the peek panel at the top, permanently: the pairing being learned on
+    // one, what is true of the word on the other. Permanent rather than shown-on-demand
+    // because the cursor is always live -- a panel that appeared and vanished would shift
+    // every line of text under it as the cursor moved. It costs a line of text, which is
+    // the trade this app exists to make.
     int num_text_display_lines() const
     {
         bool show_title_bar = token_view_styling.get_show_title_bar();
-        return num_display_lines() - (show_title_bar ? 1 : 0) - 1;
+        return num_display_lines() - (show_title_bar ? 1 : 0) - PEEK_LINES;
     }
 
     // Reading scroll step: half a screen, keeping a few lines of overlap for context.
@@ -234,7 +242,7 @@ struct TokenViewState
     // this, so the panel's line cannot be double-counted or forgotten in one place.
     int text_top() const
     {
-        return excess_pxl_y() / 2 + line_height;
+        return excess_pxl_y() / 2 + PEEK_LINES * line_height;
     }
 
     TokenViewState(std::shared_ptr<DocReader> reader, DocAddr address, SystemStyling &sys_styling, TokenViewStyling &token_view_styling)
@@ -697,71 +705,70 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
         }
     }
 
-    // The peek panel: the top line, always present. The meaning sits on the left in the
-    // bright colour and the grammar right in the dim one -- the meaning is what the eye is
-    // going for, and a fixed left edge is the shortest glance. Position and colour separate
-    // the zones, so neither needs a dash between them. The panel does not hide when a word
-    // has no entry, because the text below would then shift by a line as the cursor moved.
+    // The peek panel: the top two lines, always present. The pairing being learned on the
+    // first, in the bright colour; what is true of the word rather than of this occurrence
+    // on the second, dim. A line each rather than two zones fighting over one, which is
+    // what made the meaning -- the half worth reading -- the half that got elided.
+    //
+    // No rule beneath it. The colour change and the paragraph indent below already separate
+    // the panel from the page, and a full-width line across the screen for a boundary the
+    // eye finds anyway is chrome charged against a very small screen.
     {
-        const Sint16 bar_y = 0;
-        SDL_Rect bar = {0, bar_y, (Uint16)SCREEN_WIDTH, (Uint16)line_height};
+        SDL_Rect bar = {0, 0, (Uint16)SCREEN_WIDTH, (Uint16)(PEEK_LINES * line_height)};
         SDL_FillRect(dest_surface, &bar,
             SDL_MapRGB(dest_surface->format, theme.background.r, theme.background.g, theme.background.b));
 
-        // A hairline rule along the bottom edge separates the panel from the page.
-        SDL_Rect rule = {
-            0, static_cast<Sint16>(bar_y + line_height - 1), (Uint16)SCREEN_WIDTH, 1
-        };
-        SDL_FillRect(dest_surface, &rule,
-            SDL_MapRGB(dest_surface->format, theme.secondary_text.r, theme.secondary_text.g, theme.secondary_text.b));
-
-        const int baseline = bar_y + leading_above + ascent;
         const int avail = state->text_width();
-        const int gap = line_height / 2;
+        const WordPreview &peek = state->ws_preview;
 
-        auto width_of = [font](const std::string &t) {
-            int w = 0;
-            text::text_size(font, t.c_str(), &w, nullptr);
-            return w;
-        };
-
-        std::string meaning = state->ws_preview.meaning;
-        std::string grammar = state->ws_preview.grammar;
-        int meaning_w = meaning.empty() ? 0 : width_of(meaning);
-        int grammar_w = grammar.empty() ? 0 : width_of(grammar);
-
-        // Only elide when the two actually collide. Eliding on principle cost the tense --
-        // the part the grammar zone exists for -- on lines that had room to spare.
-        const int needed = meaning_w + (meaning_w && grammar_w ? gap : 0) + grammar_w;
-        if (needed > avail)
+        // Line one: the word as it appears, then as many senses as the width allows. One
+        // sense of the sixty-four "fare" has is a coin flip, so this takes what it can.
+        if (!peek.subject.empty())
         {
-            // The meaning is served first, up to two thirds: it carries the pairing being
-            // learned ("loro fecero → they made"), while the grammar repeats what is
-            // derivable -- the dictionary form and a shorthand tense. Capping both at half
-            // instead cut the English off lines where the grammar happened to measure
-            // exactly half, which is most of them.
-            meaning = text::elide_to_width(font, meaning, avail * 2 / 3);
-            meaning_w = meaning.empty() ? 0 : width_of(meaning);
-
-            grammar = text::elide_to_width(
-                font, grammar, std::max(0, avail - meaning_w - gap));
-            grammar_w = grammar.empty() ? 0 : width_of(grammar);
-        }
-
-        if (!meaning.empty())
-        {
+            std::string line = peek.subject;
+            if (!peek.glosses.empty())
+            {
+                const std::string arrow = " \xE2\x86\x92 ";  // " → "
+                std::string joined;
+                for (const auto &gloss : peek.glosses)
+                {
+                    const std::string candidate = joined.empty() ? gloss : joined + ", " + gloss;
+                    int w = 0;
+                    text::text_size(font, (line + arrow + candidate).c_str(), &w, nullptr);
+                    if (w > avail)
+                    {
+                        break;
+                    }
+                    joined = candidate;
+                }
+                // Nothing fit whole: show the first elided rather than the word alone.
+                if (joined.empty())
+                {
+                    int subject_w = 0, arrow_w = 0;
+                    text::text_size(font, line.c_str(), &subject_w, nullptr);
+                    text::text_size(font, arrow.c_str(), &arrow_w, nullptr);
+                    joined = text::elide_to_width(
+                        font, peek.glosses.front(),
+                        std::max(0, avail - subject_w - arrow_w));
+                }
+                if (!joined.empty())
+                {
+                    line += arrow + joined;
+                }
+            }
             text::draw_text(
-                dest_surface, font, meaning.c_str(),
-                margin_x, baseline,
+                dest_surface, font, text::elide_to_width(font, line, avail).c_str(),
+                margin_x, leading_above + ascent,
                 theme.main_text, theme.background
             );
         }
 
-        if (!grammar.empty())
+        if (!peek.grammar.empty())
         {
             text::draw_text(
-                dest_surface, font, grammar.c_str(),
-                margin_x + avail - grammar_w, baseline,
+                dest_surface, font,
+                text::elide_to_width(font, peek.grammar, avail).c_str(),
+                margin_x, line_height + leading_above + ascent,
                 theme.secondary_text, theme.background
             );
         }

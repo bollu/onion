@@ -232,8 +232,7 @@ void ArticleView::update_title(DocAddr address)
     const auto position = state->reader->get_toc_position(address);
 
     // The trail rather than the bare title: on a wiki, how you got here is context the
-    // title alone loses, and B unwinds exactly this list. The section heading is still one
-    // SELECT press away.
+    // title alone loses, and B unwinds exactly this list.
     //
     // Measured against the title bar's own width through the same font it will be drawn
     // with, so the breadcrumb decides what fits rather than being cut afterwards.
@@ -243,6 +242,19 @@ void ArticleView::update_title(DocAddr address)
         trail.push_back(entry.title);
     }
     trail.push_back(state->title);
+
+    // The section you are in, last. A bold heading says a section started; once it has
+    // scrolled off there is nothing to say which one you are still inside. It goes at the
+    // end so it is the first thing dropped when the line is short -- where you are in the
+    // archive matters more than where you are in the article.
+    if (position.toc_index < toc.size())
+    {
+        const std::string &section = toc[position.toc_index].display_name;
+        if (!section.empty() && section != state->title)
+        {
+            trail.push_back(section);
+        }
+    }
 
     text::Font *font = state->sys_styling.get_loaded_font();
     state->token_view->set_title(wiki::breadcrumb(

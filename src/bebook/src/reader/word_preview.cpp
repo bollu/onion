@@ -7,8 +7,11 @@
 
 namespace
 {
-const char *const SEP = " \xC2\xB7 ";       // " · "
-const char *const ARROW = " \xE2\x86\x92 ";  // " → "
+const char *const SEP = " \xC2\xB7 ";  // " · "
+
+// How many senses are worth carrying at all. The renderer takes what fits from these; the
+// cap only stops a word like "fare" (64 senses) from building a string nobody could read.
+const size_t MAX_GLOSSES = 6;
 }
 
 WordPreview summarize_word(const lexicon::LexiconService &lexicon, const std::string &surface)
@@ -18,63 +21,78 @@ WordPreview summarize_word(const lexicon::LexiconService &lexicon, const std::st
     auto entries = lexicon.lemmatize(surface);
     if (entries.empty())
     {
+        // Unknown: show the word and the nearest thing the lexicon does know. A blank line
+        // here reads as the app being broken rather than the word being unrecognised, and
+        // proper nouns and rare inflections land in this branch constantly.
+        out.subject = surface;
+        const auto near = lexicon.suggest(surface, 1);
+        if (!near.empty())
+        {
+            out.grammar = "? forse: " + near.front().lemma;
+        }
         return out;
     }
 
     const lexicon::LemmaEntry &entry = entries.front();
     const std::string &lemma = entry.lemma;
 
-    std::string gloss;
-    auto en = lexicon.lookup_it_en(lemma);
-    if (!en.empty())
+    auto senses = lexicon.lookup_it_en(lemma);
+    if (senses.empty())
     {
-        gloss = en.front().gloss;
-    }
-    else
-    {
-        auto it = lexicon.lookup_it_it(lemma);
-        if (!it.empty())
-        {
-            gloss = it.front().gloss;
-        }
+        senses = lexicon.lookup_it_it(lemma);
     }
 
-    // The left zone reads as the pairing being learned: the Italian exactly as it appears on
-    // the page, and the English in the same person and tense. "loro fecero → they made"
-    // teaches what "fecero ... to make" leaves the reader to work out for themselves.
+    // The subject is the Italian exactly as it appears on the page, said the way a learner
+    // needs to hear it: a verb with its pronoun, a noun with its article.
     const int person = lexicon::person_index_for_features(entry.features);
-
-    std::string italian;
     if (person >= 0)
     {
-        italian = std::string(lexicon::PERSON_LABELS[person]) + " ";
+        out.subject = std::string(lexicon::PERSON_LABELS[person]) + " ";
     }
-    italian += surface;
+    out.subject += surface;
 
-    // A noun gets its article, which is how a dictionary shows gender without a grammatical
-    // abbreviation to decode -- and gender is the one thing a learner has to memorise per
-    // noun. Only on the headword itself: "il cani" would be wrong, and an inflected form is
-    // not what an article agrees with here.
+    // Gender is the one thing a learner has to memorise per noun, and an article states it
+    // without an abbreviation to decode. Only on the headword: "il cani" would be wrong.
     if (entry.pos == "NOUN" && surface == lemma)
     {
-        italian = lexicon::with_article(surface, lexicon.noun_gender(lemma));
+        out.subject = lexicon::with_article(surface, lexicon.noun_gender(lemma));
     }
 
-    std::string english = gloss;
-    if (entry.is_verb() && person >= 0)
+    // Inflect each gloss to match, then drop the pronoun from all but the first: "they made,
+    // created" rather than "they made, they created", which is what saying it per gloss gave.
+    const std::string tense = dict::tense_key_for_features(entry.features);
+
+    for (const auto &sense : senses)
     {
-        const std::string conjugated = lexicon::conjugate_gloss(
-            gloss, person, dict::tense_key_for_features(entry.features));
-        if (!conjugated.empty())
+        if (out.glosses.size() >= MAX_GLOSSES)
         {
-            english = conjugated;
+            break;
+        }
+
+        std::string text = sense.gloss;
+        if (entry.is_verb() && person >= 0)
+        {
+            const std::string conjugated = lexicon::conjugate_gloss(text, person, tense);
+            if (!conjugated.empty())
+            {
+                text = conjugated;
+                if (!out.glosses.empty())
+                {
+                    // conjugate_gloss puts the English pronoun first; past the first gloss
+                    // it is the same word every time and only costs width.
+                    const std::string en_pronoun = text.substr(0, text.find(' ') + 1);
+                    text = text.substr(en_pronoun.size());
+                }
+            }
+        }
+
+        if (!text.empty())
+        {
+            out.glosses.push_back(text);
         }
     }
 
-    out.meaning = english.empty() ? italian : italian + ARROW + english;
-
-    // The right zone carries what is true of the word rather than of this occurrence: its
-    // dictionary form, and the tense in shorthand.
+    // Line two: what is true of the word rather than of this occurrence.
     if (lemma != surface)
     {
         out.grammar = lemma;
