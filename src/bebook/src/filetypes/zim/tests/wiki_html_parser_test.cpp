@@ -269,6 +269,22 @@ TEST(WikiHtmlParser, EmitsHeadingsAsHeaderTokens)
     ASSERT_EQ(pieces[1].type, TokenType::Text);
 }
 
+TEST(WikiHtmlParser, HeadingsAreBold)
+{
+    // Centring alone did not read as a heading -- a short centred line just looks like a
+    // short line -- and an article is mostly navigated by its sections.
+    const WikiArticle a = parse("<h2>Storia</h2><p>Testo.</p>");
+    const auto pieces = pieces_of(a);
+
+    ASSERT_EQ(pieces[0].type, TokenType::Header);
+    ASSERT_EQ(pieces[0].styles.size(), 1u);
+    ASSERT_EQ(pieces[0].styles[0].offset, 0u);
+    ASSERT_EQ(pieces[0].styles[0].length, pieces[0].text.size());
+    ASSERT_EQ(pieces[0].styles[0].style, text::Style::Bold);
+
+    ASSERT_TRUE(pieces[1].styles.empty()) << "body text is not touched";
+}
+
 TEST(WikiHtmlParser, EmitsListItemsWithLinks)
 {
     const WikiArticle a = parse(

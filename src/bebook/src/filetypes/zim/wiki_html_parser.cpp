@@ -435,6 +435,15 @@ void generate_tokens(const std::vector<Node> &nodes, zim::WikiArticle &out)
                     out.toc.push_back(TocItem{strip_whitespace(text),
                                               static_cast<uint32_t>(head.heading_indent)});
                     out.toc_addrs.push_back(head.address);
+
+                    // Bold the whole heading. Centring alone did not read as a heading --
+                    // a short centred line looks like a short line -- and an article is
+                    // mostly navigated by its sections, so they have to be findable while
+                    // scrolling past.
+                    style_runs.clear();
+                    style_runs.push_back({ 0u, static_cast<uint32_t>(text.size()),
+                                           text::Style::Bold });
+
                     out.tokens.push_back(std::make_unique<HeaderDocToken>(
                         head.address, text, std::move(style_runs), std::move(link_runs)));
                 }
