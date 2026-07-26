@@ -41,8 +41,8 @@ FileZimSource::FileZimSource(const std::string &path)
     }
 
     // fseeko/ftello rather than fseek/ftell: long is 32 bits on the device, so anything
-    // past 2GB would wrap and silently seek to the wrong place. top_mini is 112MB, but
-    // the full-Wikipedia archives are 2.4GB and up.
+    // past 2GB would wrap and silently seek to the wrong place. top_nopic is 836MB, but
+    // the full-Wikipedia archives are 2.2GB and up.
     if (fseeko(fp, 0, SEEK_END) != 0)
     {
         std::fclose(fp);

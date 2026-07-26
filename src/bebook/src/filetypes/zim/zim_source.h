@@ -9,7 +9,7 @@ namespace zim
 {
 
 // Random-access bytes behind a ZIM. The seam exists so tests can drive ZimFile from a
-// synthetic archive in memory, with no 112MB file present.
+// synthetic archive in memory, with no 836MB file present.
 class ZimSource
 {
 public:

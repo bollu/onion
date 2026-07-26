@@ -24,6 +24,6 @@ third-party/kaikki/
 # raw ~80MB .sqlite is unpacked from it at build time (see the Makefile) and never committed.
 resources/italian.sqlite
 
-# Offline Wikipedia archives, fetched by tools/fetch_zim.sh. 112MB for the mini flavour,
-# 876MB for nopic -- never committed.
+# Offline Wikipedia archives, fetched by tools/fetch_zim.sh. 836MB for the nopic
+# flavour, 107MB for mini -- never committed.
 resources/wiki/

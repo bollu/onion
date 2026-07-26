@@ -1,17 +1,20 @@
 #!/bin/sh
 # Fetch the offline Wikipedia archive bewiki reads.
 #
-# The default is the Italian "top" selection in the "mini" flavour: the ~194k most-visited
-# articles, lead section each, 112MB. Every article is present, so links always resolve;
-# only the depth per article is reduced. Swap ZIM_NAME for wikipedia_it_top_nopic to get
-# full articles at 876MB -- same code path, same article set.
+# The default is the Italian "top" selection in the "nopic" flavour: the ~194k most-visited
+# articles, full text, no images, 836MB. Every article is present, so links always resolve.
+#
+# Swap ZIM_NAME for wikipedia_it_top_mini to get the same article set at 107MB with only
+# the lead section of each -- same code path, much smaller. wikipedia_it_all_nopic is the
+# whole of Italian Wikipedia at full depth, but it is 8.3GB and so cannot live on the
+# card: FAT32, which Onion requires, caps a single file at 4GiB.
 #
 # Kiwix filenames carry a month suffix that changes with each rebuild, so pinning a URL
 # would 404 within weeks. The current one is resolved from the directory listing instead.
 # Override with ZIM_URL to pin a specific build.
 set -e
 
-ZIM_NAME="${ZIM_NAME:-wikipedia_it_top_mini}"
+ZIM_NAME="${ZIM_NAME:-wikipedia_it_top_nopic}"
 ZIM_BASE="${ZIM_BASE:-https://download.kiwix.org/zim/wikipedia}"
 DEST="$(cd "$(dirname "$0")/.." && pwd)/resources/wiki"
 
@@ -38,7 +41,7 @@ out="$DEST/$ZIM_NAME.zim"
 
 echo "Fetching $ZIM_URL"
 echo "     ->  $out"
-echo "(112MB for the mini flavour; interrupted downloads resume on re-run)"
+echo "(836MB for the nopic flavour; interrupted downloads resume on re-run)"
 
 # -C - resumes a partial file. Written to a .part first so an interrupted run can never
 # leave a truncated archive sitting at the final path, where bewiki would try to open it.

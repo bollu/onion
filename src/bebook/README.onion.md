@@ -87,7 +87,7 @@ Comparing content means a file moves only if its bytes differ.
 
 ### Content
 
-The Wikipedia archive is not in git (112MB). Fetch it once:
+The Wikipedia archive is not in git (836MB). Fetch it once:
 
 ```sh
 src/bebook/tools/fetch_zim.sh
@@ -95,8 +95,12 @@ src/bebook/tools/fetch_zim.sh
 
 It resolves the current build from kiwix (the filenames carry a month suffix, so a pinned
 URL would stop working within weeks), resumes if interrupted, and lands in
-`resources/wiki/`, which is gitignored. Set `ZIM_NAME=wikipedia_it_top_nopic` for full
-articles instead of lead sections — same code path, 876MB instead of 112MB.
+`resources/wiki/`, which is gitignored. The default is the "top" article set at full
+depth, images stripped. Set `ZIM_NAME=wikipedia_it_top_mini` for the same articles cut to
+their lead section — same code path, 107MB instead of 836MB.
+
+The whole of Italian Wikipedia (`wikipedia_it_all_nopic`) is 8.3GB and will not fit: Onion
+requires FAT32, which caps a single file at 4GiB, and kiwix publishes no split parts.
 
 Deploy stages the archive when it is present and warns when it is not, rather than
 quietly shipping a reader with nothing to read.

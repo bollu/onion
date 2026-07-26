@@ -18,7 +18,7 @@ CARD_ZIM_DIR="Roms/WIKI"
 # -rltv rather than -a: -a would add -pgoD, and perms, owner, group and device nodes are
 # all meaningless on FAT32 -- each one produces a per-file error.
 #
-# --partial so a connection dropped partway through the 112MB archive resumes.
+# --partial so a connection dropped partway through the 836MB archive resumes.
 #
 # Flags are kept rsync 2.6.9-compatible: that is what macOS ships, so --info=progress2
 # and other 3.x conveniences are unavailable.
