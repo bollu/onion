@@ -17,6 +17,7 @@
 #include "reader/views/settings_view.h"
 #include "reader/views/token_view/token_view_styling.h"
 
+#include "sys/game_switcher.h"
 #include "sys/keymap.h"
 #include "sys/screen.h"
 #include "util/debounced.h"
@@ -502,6 +503,13 @@ int main(int argc, char **argv)
                     {
                         // START returns to the main menu from anywhere in the app, uniform
                         // with bebook/bedict. The resume stub is saved after the loop.
+                        quit = true;
+                    }
+                    else if (key == SW_BTN_MENU)
+                    {
+                        // MENU opens the GameSwitcher: request it and quit, letting runtime.sh
+                        // launch the fullscreen switcher once we exit.
+                        request_game_switcher();
                         quit = true;
                     }
                     else

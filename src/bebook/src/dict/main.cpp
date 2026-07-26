@@ -13,6 +13,7 @@
 
 #include "lexicon/lexicon_service.h"
 
+#include "sys/game_switcher.h"
 #include "sys/keymap.h"
 #include "sys/screen.h"
 #include "util/fps_limiter.h"
@@ -142,9 +143,15 @@ int main(int, char **)
                     // bebook/bewiki.
                     quit = true;
                 }
+                else if (key == SW_BTN_MENU)
+                {
+                    // MENU opens the GameSwitcher: request it and quit, letting runtime.sh
+                    // launch the fullscreen switcher once we exit.
+                    request_game_switcher();
+                    quit = true;
+                }
                 else
                 {
-                    // MENU is left to keymon (GameSwitcher), like bebook: keys dispatched raw.
                     view_stack.on_keypress(key);
                     ran_user_code = true;
                 }

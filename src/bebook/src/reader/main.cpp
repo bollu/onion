@@ -12,6 +12,7 @@
 #include "./views/settings_view.h"
 #include "./views/token_view/token_view_styling.h"
 #include "filetypes/open_doc.h"
+#include "sys/game_switcher.h"
 #include "sys/keymap.h"
 #include "sys/screen.h"
 #include "util/fps_limiter.h"
@@ -102,10 +103,10 @@ void initialize_views(
     }
 }
 
-// bebook is always launched as an OnionOS "game" (from Recents / the EBOOK system), so
-// keymon owns the MENU button to open the GameSwitcher and bebook must never act on MENU
-// itself. Keys are therefore dispatched raw; leaving a book is done from the GameSwitcher's
-// exit (or B out of the reader).
+// MENU opens the GameSwitcher and START returns to the main menu, both handled in the event
+// loop below. keymon does not open the GameSwitcher for our apps (they run in MODE_APPS, where
+// its menu handler is a no-op), so bebook requests it itself via request_game_switcher() and
+// quits, letting runtime.sh launch the fullscreen switcher -- see sys/game_switcher.h.
 
 bool quit = false;
 
@@ -351,6 +352,14 @@ int main(int argc, char **argv)
                             // START returns to the main menu from anywhere in the app,
                             // handled here (not per-view) so it is uniform across
                             // bebook/bewiki/bedict and works even over a modal/menu.
+                            quit = true;
+                        }
+                        else if (key == SW_BTN_MENU)
+                        {
+                            // MENU opens the GameSwitcher: request it and quit, letting
+                            // runtime.sh launch the fullscreen switcher once we exit. (An app
+                            // cannot overlay the switcher without fighting the framebuffer.)
+                            request_game_switcher();
                             quit = true;
                         }
                         else
