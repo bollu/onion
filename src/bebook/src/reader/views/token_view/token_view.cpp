@@ -157,6 +157,8 @@ struct TokenViewState
     bool needs_render = true;
 
     std::string title;
+    // Shown in place of the title while a word is selected. Empty leaves the title.
+    std::string hint;
     int title_progress_percent = 0;
 
     std::function<void(DocAddr)> on_scroll;
@@ -170,10 +172,14 @@ struct TokenViewState
     int ws_word = 0;
     std::function<void(const std::string &)> on_open_word;
 
-    // Set by the wiki reader only. Moves the dictionary from A to X and gives A to link
-    // following; see ws_handle_key.
-    bool link_mode = false;
+    // Which buttons do what once a word is selected. See ws_handle_key.
+    TokenView::WordSelectKeys word_select_keys = TokenView::WordSelectKeys::LookupOnA;
     std::function<void(const std::string &)> on_follow_link;
+
+    bool follows_links() const
+    {
+        return word_select_keys == TokenView::WordSelectKeys::FollowOnA;
+    }
 
     bool word_select() const { return mode == TokenViewMode::WordSelect; }
 
@@ -600,9 +606,14 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             title_crop_rect.w = SCREEN_WIDTH - margin_x * 2 - percent_w - battery_w;
         }
 
-        // Toc item. Clipped rather than cropped from an oversized surface, so a long
-        // chapter name is truncated at the progress readout instead of overrunning it.
-        if (state->title.size() > 0)
+        // Title, or what the buttons do. While a word is selected the bindings are worth
+        // more than the title -- it is the one moment the user needs them, and it costs no
+        // screen space to say so here rather than on a line of its own.
+        const std::string &bar_text = state->word_select() && !state->hint.empty()
+            ? state->hint
+            : state->title;
+
+        if (bar_text.size() > 0)
         {
             SDL_Rect clip = {
                 static_cast<Sint16>(margin_x),
@@ -612,7 +623,7 @@ bool TokenView::render(SDL_Surface *dest_surface, bool force_render)
             };
 
             text::draw_text(
-                dest_surface, font, state->title.c_str(),
+                dest_surface, font, bar_text.c_str(),
                 margin_x, title_baseline,
                 theme.secondary_text, theme.background,
                 &clip
@@ -775,6 +786,11 @@ void TokenView::seek_to_address(DocAddr address)
     state->needs_render = true;
 }
 
+void TokenView::set_word_select_hint(const std::string &hint)
+{
+    state->hint = hint;
+}
+
 void TokenView::set_title(const std::string &title)
 {
     if (title != state->title)
@@ -815,9 +831,9 @@ void TokenView::enter_word_select()
     ws_enter();
 }
 
-void TokenView::set_link_mode(bool enabled)
+void TokenView::set_word_select_keys(WordSelectKeys keys)
 {
-    state->link_mode = enabled;
+    state->word_select_keys = keys;
 }
 
 void TokenView::set_on_follow_link(std::function<void(const std::string &)> callback)
@@ -868,15 +884,14 @@ void TokenView::ws_handle_key(SDLKey key)
         case SW_BTN_DOWN:  ws_move_line(1); break;
         case SW_BTN_B:     ws_exit(); break;
 
-        // A is the primary action, which differs by app: bebook has nowhere to navigate,
-        // so A opens the dictionary; the wiki reader follows the link and moves the
-        // dictionary to X. Gated on an explicit flag rather than on whether a callback
-        // happens to be set, so wiring one up can never silently rebind A.
+        // A is the primary action, and what it does depends on the document, not on
+        // whether a callback happens to be set -- wiring one up must never silently
+        // rebind a button. See WordSelectKeys.
         case SW_BTN_A:
-            if (state->link_mode) { ws_follow_selected(); } else { ws_open_selected(); }
+            if (state->follows_links()) { ws_follow_selected(); } else { ws_open_selected(); }
             break;
         case SW_BTN_X:
-            if (state->link_mode) { ws_open_selected(); }
+            if (state->follows_links()) { ws_open_selected(); }
             break;
 
         default: break;
@@ -1012,7 +1027,7 @@ void TokenView::ws_follow_selected()
 {
     const TextLine *tl = nullptr;
     WordSpan sp{0, 0};
-    if (!state->on_follow_link || !ws_selected_span(&tl, &sp))
+    if (!ws_selected_span(&tl, &sp))
     {
         return;
     }
@@ -1020,8 +1035,14 @@ void TokenView::ws_follow_selected()
     // Overlap rather than containment: tokenize_words drops leading punctuation, so a
     // word inside «Roma» starts a byte after the link its glyphs sit under.
     const LinkRun *link = link_run_overlapping(tl->link_runs, sp.start, sp.end);
-    if (link != nullptr)
+    if (link != nullptr && state->on_follow_link)
     {
         state->on_follow_link(link->target);
+        return;
     }
+
+    // Not a link. Look the word up rather than doing nothing: A is the primary button and
+    // a press that produces no response at all reads as the app being broken. Only the
+    // underline distinguishes the two cases, and it is one dim pixel.
+    ws_open_selected();
 }

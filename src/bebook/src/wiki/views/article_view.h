@@ -51,6 +51,10 @@ public:
     // Fires on navigation and on scroll, for the Game Switcher tile and resume state.
     void set_on_change(std::function<void(const std::string &path, DocAddr)> callback);
 
+    // Opens the settings screen. main() owns the SettingsView, which is a long-lived
+    // singleton rather than something this view can construct.
+    void set_on_open_settings(std::function<void()> callback);
+
 private:
     std::unique_ptr<ArticleViewState> state;
 

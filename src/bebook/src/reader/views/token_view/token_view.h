@@ -60,6 +60,10 @@ public:
     void set_title(const std::string &title);
     void set_title_progress(int percent);
 
+    // Replaces the title in the bottom bar while a word is selected, which is the moment
+    // the bindings matter and the title does not. Empty leaves the title showing.
+    void set_word_select_hint(const std::string &hint);
+
     void set_on_scroll(std::function<void(DocAddr)> callback);
 
     // True while the word-selection highlight is active. The owning view should route all
@@ -75,9 +79,18 @@ public:
     // mode stays active.
     void set_on_open_word(std::function<void(const std::string &)> callback);
 
-    // Link mode gives A to link following and moves the dictionary to X. Off by default,
-    // so books keep A for the dictionary.
-    void set_link_mode(bool enabled);
+    // Which scheme the buttons follow once a word is selected. Configuration rather than
+    // state -- it is set once per document and does not change while reading.
+    enum class WordSelectKeys
+    {
+        // A book has nowhere to navigate, so A looks the selected word up.
+        LookupOnA,
+        // A hypertext document gives A to the link under the word and lookup moves to X.
+        FollowOnA,
+    };
+
+    // Defaults to LookupOnA, so books are unaffected.
+    void set_word_select_keys(WordSelectKeys keys);
 
     // Called with a link target when A is pressed on a highlighted word that overlaps one.
     void set_on_follow_link(std::function<void(const std::string &)> callback);

@@ -49,6 +49,8 @@ struct ArticleViewState
     nav::Event queued_cause = nav::Event::LinkFollowed;
 
     std::function<void(const std::string &, DocAddr)> on_change;
+    // Owned by main(), which holds the SettingsView singleton the stack expects.
+    std::function<void()> on_open_settings;
 
     void step(nav::Event event) { nav_state = nav::transition(nav_state, event); }
 
@@ -121,8 +123,12 @@ bool ArticleView::navigate_to(const std::string &path, DocAddr address, bool rec
     state->token_view = std::make_unique<TokenView>(
         reader, address, state->sys_styling, state->token_view_styling);
 
-    // A follows links here; the dictionary moves to X. See TokenView::ws_handle_key.
-    state->token_view->set_link_mode(true);
+    // A follows links here; the dictionary moves to X. See TokenView::WordSelectKeys.
+    state->token_view->set_word_select_keys(TokenView::WordSelectKeys::FollowOnA);
+
+    // Shown in the bottom bar while a word is selected, which is the one moment the
+    // bindings matter more than the article title.
+    state->token_view->set_word_select_hint("A apri   X significato   B esci");
 
     state->token_view->set_on_open_word([this](const std::string &surface) {
         state->view_stack.push(std::make_shared<WordMeaningView>(
@@ -274,13 +280,67 @@ void ArticleView::open_toc_menu()
 
 void ArticleView::open_menu()
 {
-    const std::vector<std::string> entries = {"Indice", "Impostazioni"};
+    // Built rather than fixed, because "Indice" is a dead end on lead-section archives:
+    // those articles carry no headings, so the menu would offer an entry that can only
+    // report that there is nothing to show.
+    enum class MenuItem { Toc, Help, TitleBar, Settings, Home };
 
-    auto menu = std::make_shared<SelectionMenu>(entries, state->sys_styling);
-    menu->set_on_selection([this](uint32_t index) {
-        if (index == 0)
+    std::vector<std::string> labels;
+    std::vector<MenuItem> items;
+
+    const bool has_toc = state->reader != nullptr &&
+                         !state->reader->get_table_of_contents().empty();
+    if (has_toc)
+    {
+        labels.push_back("Indice");
+        items.push_back(MenuItem::Toc);
+    }
+
+    labels.push_back("Comandi");
+    items.push_back(MenuItem::Help);
+
+    labels.push_back(state->token_view_styling.get_show_title_bar() ? "Nascondi barra"
+                                                                   : "Mostra barra");
+    items.push_back(MenuItem::TitleBar);
+
+    labels.push_back("Impostazioni");
+    items.push_back(MenuItem::Settings);
+
+    if (state->history.can_go_back())
+    {
+        labels.push_back("Torna all'elenco");
+        items.push_back(MenuItem::Home);
+    }
+
+    auto menu = std::make_shared<SelectionMenu>(labels, state->sys_styling);
+    menu->set_on_selection([this, items](uint32_t index) {
+        if (index >= items.size())
         {
-            open_toc_menu();
+            return;
+        }
+        switch (items[index])
+        {
+            case MenuItem::Toc:
+                open_toc_menu();
+                break;
+            case MenuItem::Help:
+                state->view_stack.push(std::make_shared<PopupView>(
+                    "A parole · A apri · X significato · B indietro · START elenco",
+                    SYSTEM_FONT, state->sys_styling));
+                break;
+            case MenuItem::TitleBar:
+                state->token_view_styling.set_show_title_bar(
+                    !state->token_view_styling.get_show_title_bar());
+                break;
+            case MenuItem::Settings:
+                if (state->on_open_settings)
+                {
+                    state->on_open_settings();
+                }
+                break;
+            case MenuItem::Home:
+                state->step(nav::Event::HomeRequested);
+                break;
         }
     });
     menu->set_close_on_select();
@@ -395,4 +455,9 @@ DocAddr ArticleView::current_address() const
 void ArticleView::set_on_change(std::function<void(const std::string &, DocAddr)> callback)
 {
     state->on_change = std::move(callback);
+}
+
+void ArticleView::set_on_open_settings(std::function<void()> callback)
+{
+    state->on_open_settings = std::move(callback);
 }

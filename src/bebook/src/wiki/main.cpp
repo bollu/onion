@@ -185,6 +185,12 @@ int main(int argc, char **argv)
     std::string pending_tile_title;
     DocAddr pending_tile_address = 0;
 
+    // One long-lived instance rather than one per visit: it is pushed and popped
+    // repeatedly, so it terminates rather than finishing for good. Built here because the
+    // article view may be created later, by the reading list, and needs to reach it.
+    std::shared_ptr<SettingsView> settings_view =
+        std::make_shared<SettingsView>(sys_styling, token_view_styling, SYSTEM_FONT);
+
     // One place, because the article view is created either from the reading list or by
     // resuming, and both need identical bookkeeping.
     auto record_change = [&](const std::string &path, DocAddr at) {
@@ -200,6 +206,11 @@ int main(int argc, char **argv)
 
     auto install_on_change = [&]() {
         article_view->set_on_change(record_change);
+
+        article_view->set_on_open_settings([&view_stack, settings_view]() {
+            settings_view->unterminate();
+            view_stack.push(settings_view);
+        });
 
         // Fire once for the article already open: ArticleView navigates in its
         // constructor, before this callback exists, so opening one and quitting without
@@ -317,8 +328,6 @@ int main(int argc, char **argv)
 
     quit = view_stack.is_done();
 
-    std::shared_ptr<SettingsView> settings_view =
-        std::make_shared<SettingsView>(sys_styling, token_view_styling, SYSTEM_FONT);
 
     HeldKeyTracker held_key_tracker({
         SW_BTN_UP, SW_BTN_DOWN, SW_BTN_LEFT, SW_BTN_RIGHT,
